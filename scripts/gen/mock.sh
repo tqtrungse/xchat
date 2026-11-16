@@ -10,11 +10,16 @@ cd "$ROOT_DIR"
 ### Pkg
 
 mockgen \
-  -source=pkg/database/sql/ports.go \
-  -destination=pkg/database/sql/mocks/ports_mock.go \
+  -source=pkg/database/sql/port.go \
+  -destination=pkg/database/sql/mocks/port_mock.go \
   -package=mocks
 
 mockgen \
-  -source=pkg/generator/ports.go \
-  -destination=pkg/generator/mocks/ports_mock.go \
+  -source=pkg/generator/port.go \
+  -destination=pkg/generator/mocks/port_mock.go \
+  -package=mocks
+
+mockgen \
+  -source=pkg/jwt/port.go \
+  -destination=pkg/jwt/mocks/port_mock.go \
   -package=mocks
