@@ -234,10 +234,13 @@ func TestFindPath_LocalEnvIgnoresProdFile(t *testing.T) {
 func TestFindPath_UnknownEnv(t *testing.T) {
 	isolate(t)
 
-	got, err := findPath("svc", Env(2))
-	require.Error(t, err)
-	assert.Empty(t, got)
-	assert.Contains(t, err.Error(), "unknown config environment")
+	for _, env := range []Env{"", "staging", "PROD"} {
+		got, err := findPath("svc", env)
+		require.Error(t, err)
+		assert.Empty(t, got)
+		assert.Contains(t, err.Error(), "unknown config environment")
+		assert.Contains(t, err.Error(), `use "prod" or "local"`)
+	}
 }
 
 // -------------
