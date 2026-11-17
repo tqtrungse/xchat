@@ -6,10 +6,16 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 
 COMPOSE_FILE="$ROOT_DIR/deploy/local-docker-compose.yaml"
+AUTH_ENV_FILE="$ROOT_DIR/deploy/auth/local/.env"
 MYSQL_ENV_FILE="$ROOT_DIR/deploy/mysql/local/.env"
 
 if [[ ! -f "$COMPOSE_FILE" ]]; then
   echo "Missing docker compose file: $COMPOSE_FILE" >&2
+  exit 1
+fi
+
+if [[ ! -f "$AUTH_ENV_FILE" ]]; then
+  echo "Missing auth local environment file: $AUTH_ENV_FILE" >&2
   exit 1
 fi
 
@@ -23,6 +29,7 @@ if [[ $# -eq 0 ]]; then
 fi
 
 exec docker compose \
+  --env-file "$AUTH_ENV_FILE" \
   --env-file "$MYSQL_ENV_FILE" \
   -f "$COMPOSE_FILE" \
   "$@"

@@ -1,6 +1,22 @@
 name: xchat
 
 services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.0
+    container_name: keycloak
+    command: [ "start-dev", "--import-realm" ]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${AUTH_ADMIN_USER:?Set AUTH_ADMIN_USER}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${AUTH_ADMIN_PASSWORD:?Set AUTH_ADMIN_PASSWORD}
+    # The host port is 8180, because local tools often take 8080. The issuer
+    # in a token contains this port, so IAM and each client use the same URL.
+    ports:
+      - "127.0.0.1:8180:8080"
+    # A directory import requires the file name <realm>-realm.json. The realm
+    # in auth-realm.json is iam-local.
+    volumes:
+      - ${AUTH_REALM_JSON:?Set AUTH_REALM_JSON to a auth-realm.json path}:/opt/keycloak/data/import/iam-local-realm.json:ro
+
   dbmigrator:
     profiles: [ "dbmigrate" ]
     build:
