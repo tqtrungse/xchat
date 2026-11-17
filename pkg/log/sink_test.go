@@ -407,12 +407,11 @@ func TestFatal_FlushesBeforeExit(t *testing.T) {
 	const childEnv = "LOG_TEST_FATAL_CHILD"
 
 	if os.Getenv(childEnv) == "1" {
-		logger, closeFn, err := NewLogger(Config{DisableSampling: true})
+		logger, _, err := NewLogger(Config{DisableSampling: true})
 		if err != nil {
 			os.Exit(97)
 		}
 		logger.Fatal("fatal entry", zap.String("reason", "deliberate"))
-		_ = closeFn()
 		os.Exit(98) // This line does not run. Fatal exits the process.
 	}
 
