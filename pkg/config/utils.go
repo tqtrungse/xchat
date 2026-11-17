@@ -15,15 +15,17 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Env selects the environment file that Load reads.
-type Env uint8
+// Env names the environment of a service. It selects the environment file
+// that Load reads. A command can convert a flag value to Env, and Load rejects
+// an unknown name.
+type Env string
 
 const (
 	// EnvProd reads cmd/SERVICE/.prod.env.
-	EnvProd Env = iota
+	EnvProd Env = "prod"
 
 	// EnvLocal reads cmd/SERVICE/.local.env.
-	EnvLocal
+	EnvLocal Env = "local"
 )
 
 // Load reads the config file of the service and the environment.
@@ -113,6 +115,6 @@ func (e Env) fileName() (string, error) {
 		return ".local.env", nil
 
 	default:
-		return "", fmt.Errorf("unknown config environment %d", e)
+		return "", fmt.Errorf("unknown config environment %q; use %q or %q", string(e), EnvProd, EnvLocal)
 	}
 }

@@ -27,7 +27,13 @@ go.work.sum
 
 # env file
 .env
+.local.env
+.prod.env
 
 # Editor/IDE
-# .idea/
+ .idea/
 # .vscode/
+
+# Cert file
+.local.crt
+.local.key
