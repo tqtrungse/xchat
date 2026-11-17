@@ -6,14 +6,12 @@
 package config
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -43,14 +41,12 @@ func assertSamePath(t *testing.T, want, got string) {
 	assert.Equal(t, wantReal, gotReal)
 }
 
-// isolate moves the test into an empty work folder and clears the config env var.
-// The env var of the developer machine must not change the test result.
-func isolate(t *testing.T, envName string) string {
+// isolate moves the test into an empty work folder.
+func isolate(t *testing.T) string {
 	t.Helper()
 
 	dir := t.TempDir()
 	t.Chdir(dir)
-	t.Setenv(envName, "")
 	return dir
 }
 
@@ -114,61 +110,24 @@ func TestSplitList(t *testing.T) {
 // findPath
 // --------
 
-func TestFindPath_EnvAbsolutePath(t *testing.T) {
-	isolate(t, "SVC_CONFIG_FILE")
+// TestFindPath_ConfigEnvIgnored checks that no environment variable changes the
+// path search.
+func TestFindPath_ConfigEnvIgnored(t *testing.T) {
+	isolate(t)
 	path := filepath.Join(t.TempDir(), "app.yaml")
 	writeFile(t, path, "a: 1\n")
 	t.Setenv("SVC_CONFIG_FILE", path)
 
-	got, err := findPath("svc")
-	require.NoError(t, err)
-	assert.Equal(t, path, got)
-}
-
-func TestFindPath_EnvRelativePath(t *testing.T) {
-	dir := isolate(t, "SVC_CONFIG_FILE")
-	writeFile(t, filepath.Join(dir, "conf", "app.yaml"), "a: 1\n")
-	t.Setenv("SVC_CONFIG_FILE", filepath.Join("conf", "app.yaml"))
-
-	got, err := findPath("svc")
-	require.NoError(t, err)
-	assert.True(t, filepath.IsAbs(got))
-	assertSamePath(t, filepath.Join(dir, "conf", "app.yaml"), got)
-}
-
-// TestFindPath_EnvUsesUpperCaseName checks that the env var name is in upper case,
-// for a service name in mixed case.
-func TestFindPath_EnvUsesUpperCaseName(t *testing.T) {
-	isolate(t, "MYSVC_CONFIG_FILE")
-	path := filepath.Join(t.TempDir(), "app.yaml")
-	writeFile(t, path, "a: 1\n")
-	t.Setenv("MYSVC_CONFIG_FILE", path)
-
-	got, err := findPath("MySvc")
-	require.NoError(t, err)
-	assert.Equal(t, path, got)
-}
-
-// TestFindPath_EnvMissingFile checks that a bad env var value is an error.
-// The search must not continue to the default candidates in this case.
-func TestFindPath_EnvMissingFile(t *testing.T) {
-	dir := isolate(t, "SVC_CONFIG_FILE")
-	writeFile(t, filepath.Join(dir, ".prod.env"), "A=1\n")
-	t.Setenv("SVC_CONFIG_FILE", filepath.Join(dir, "missing.yaml"))
-
-	got, err := findPath("svc")
+	got, err := findPath("svc", EnvProd)
 	require.Error(t, err)
 	assert.Empty(t, got)
-	assert.ErrorIs(t, err, os.ErrNotExist)
-	assert.Contains(t, err.Error(), "SVC_CONFIG_FILE")
-	assert.Contains(t, err.Error(), "missing.yaml")
 }
 
 func TestFindPath_CmdServiceFile(t *testing.T) {
-	dir := isolate(t, "SVC_CONFIG_FILE")
+	dir := isolate(t)
 	writeFile(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), "A=1\n")
 
-	got, err := findPath("svc")
+	got, err := findPath("svc", EnvProd)
 	require.NoError(t, err)
 	assertSamePath(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), got)
 }
@@ -176,70 +135,58 @@ func TestFindPath_CmdServiceFile(t *testing.T) {
 // TestFindPath_CmdServiceFileLowerCase checks that the cmd folder name is in lower case,
 // for a service name in mixed case.
 func TestFindPath_CmdServiceFileLowerCase(t *testing.T) {
-	dir := isolate(t, "SVC_CONFIG_FILE")
+	dir := isolate(t)
 	writeFile(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), "A=1\n")
 
-	got, err := findPath("SVC")
+	got, err := findPath("SVC", EnvProd)
 	require.NoError(t, err)
 	assertSamePath(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), got)
 }
 
 func TestFindPath_WorkDirFile(t *testing.T) {
-	dir := isolate(t, "SVC_CONFIG_FILE")
+	dir := isolate(t)
 	writeFile(t, filepath.Join(dir, ".prod.env"), "A=1\n")
 
-	got, err := findPath("svc")
+	got, err := findPath("svc", EnvProd)
 	require.NoError(t, err)
 	assertSamePath(t, filepath.Join(dir, ".prod.env"), got)
 }
 
 func TestFindPath_CmdServiceFileHasPriority(t *testing.T) {
-	dir := isolate(t, "SVC_CONFIG_FILE")
+	dir := isolate(t)
 	writeFile(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), "A=cmd\n")
 	writeFile(t, filepath.Join(dir, ".prod.env"), "A=root\n")
 
-	got, err := findPath("svc")
+	got, err := findPath("svc", EnvProd)
 	require.NoError(t, err)
 	assertSamePath(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), got)
 }
 
-func TestFindPath_EnvHasPriority(t *testing.T) {
-	dir := isolate(t, "SVC_CONFIG_FILE")
-	writeFile(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), "A=cmd\n")
-	path := filepath.Join(t.TempDir(), "app.yaml")
-	writeFile(t, path, "a: env\n")
-	t.Setenv("SVC_CONFIG_FILE", path)
-
-	got, err := findPath("svc")
-	require.NoError(t, err)
-	assert.Equal(t, path, got)
-}
-
 // TestFindPath_OtherServiceFolderIgnored checks that the search uses only the folder of the given service.
 func TestFindPath_OtherServiceFolderIgnored(t *testing.T) {
-	dir := isolate(t, "SVC_CONFIG_FILE")
+	dir := isolate(t)
 	writeFile(t, filepath.Join(dir, "cmd", "other", ".prod.env"), "A=1\n")
 
-	_, err := findPath("svc")
+	_, err := findPath("svc", EnvProd)
 	require.Error(t, err)
 }
 
 func TestFindPath_NotFound(t *testing.T) {
-	isolate(t, "SVC_CONFIG_FILE")
+	isolate(t)
 
-	got, err := findPath("Svc")
+	got, err := findPath("Svc", EnvProd)
 	require.Error(t, err)
 	assert.Empty(t, got)
-	assert.Equal(t, "svc config not found; set SVC_CONFIG_FILE or provide cmd/svc/.prod.env", err.Error())
+	assert.Equal(t, "svc config not found; provide cmd/svc/.prod.env", err.Error())
 }
 
 // TestFindPath_CandidateIsFolder checks that a folder with the candidate name is a match.
 // findPath uses os.Stat only, so it does not check the file type.
 func TestFindPath_CandidateIsFolder(t *testing.T) {
-	dir := isolate(t, "SVC_CONFIG_FILE")
+	dir := isolate(t)
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".prod.env"), 0o755))
 
-	got, err := findPath("svc")
+	got, err := findPath("svc", EnvProd)
 	require.NoError(t, err)
 	assertSamePath(t, filepath.Join(dir, ".prod.env"), got)
 }
@@ -249,7 +196,7 @@ func TestFindPath_StatError(t *testing.T) {
 	if os.Getuid() == 0 {
 		t.Skip("root ignores folder permissions")
 	}
-	dir := isolate(t, "SVC_CONFIG_FILE")
+	dir := isolate(t)
 	cmdDir := filepath.Join(dir, "cmd", "svc")
 	writeFile(t, filepath.Join(cmdDir, ".prod.env"), "A=1\n")
 	writeFile(t, filepath.Join(dir, ".prod.env"), "A=1\n")
@@ -257,11 +204,40 @@ func TestFindPath_StatError(t *testing.T) {
 	require.NoError(t, os.Chmod(cmdDir, 0o600))
 	t.Cleanup(func() { _ = os.Chmod(cmdDir, 0o755) })
 
-	got, err := findPath("svc")
+	got, err := findPath("svc", EnvProd)
 	require.Error(t, err)
 	assert.Empty(t, got)
 	assert.ErrorIs(t, err, os.ErrPermission)
 	assert.Contains(t, err.Error(), "inspect svc config")
+}
+
+func TestFindPath_LocalEnv(t *testing.T) {
+	dir := isolate(t)
+	writeFile(t, filepath.Join(dir, "cmd", "svc", ".local.env"), "A=local\n")
+	writeFile(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), "A=prod\n")
+
+	got, err := findPath("svc", EnvLocal)
+	require.NoError(t, err)
+	assertSamePath(t, filepath.Join(dir, "cmd", "svc", ".local.env"), got)
+}
+
+func TestFindPath_LocalEnvIgnoresProdFile(t *testing.T) {
+	dir := isolate(t)
+	writeFile(t, filepath.Join(dir, ".prod.env"), "A=1\n")
+
+	got, err := findPath("svc", EnvLocal)
+	require.Error(t, err)
+	assert.Empty(t, got)
+	assert.Contains(t, err.Error(), ".local.env")
+}
+
+func TestFindPath_UnknownEnv(t *testing.T) {
+	isolate(t)
+
+	got, err := findPath("svc", Env(2))
+	require.Error(t, err)
+	assert.Empty(t, got)
+	assert.Contains(t, err.Error(), "unknown config environment")
 }
 
 // -------------
@@ -318,21 +294,31 @@ func TestDefaultLoader_ExactFile(t *testing.T) {
 // ----
 
 func TestLoad_DotEnvFile(t *testing.T) {
-	dir := isolate(t, "SVC_CONFIG_FILE")
+	dir := isolate(t)
 	writeFile(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), "APP_NAME=demo\nAPP_PORT=8080\n")
 
-	l, err := Load("svc")
+	l, err := Load("svc", EnvProd)
 	require.NoError(t, err)
 	assert.Equal(t, "demo", l.GetString("app_name"))
 	assert.Equal(t, 8080, l.GetInt("app_port"))
 }
 
+func TestLoad_LocalEnv(t *testing.T) {
+	dir := isolate(t)
+	writeFile(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), "APP_NAME=prod\n")
+	writeFile(t, filepath.Join(dir, "cmd", "svc", ".local.env"), "APP_NAME=local\n")
+
+	l, err := Load("svc", EnvLocal)
+	require.NoError(t, err)
+	assert.Equal(t, "local", l.GetString("app_name"))
+}
+
 func TestLoad_EnvOverridesFile(t *testing.T) {
-	dir := isolate(t, "SVC_CONFIG_FILE")
+	dir := isolate(t)
 	writeFile(t, filepath.Join(dir, ".prod.env"), "CONFIG_TEST_NAME=from-file\nCONFIG_TEST_KEEP=kept\n")
 	t.Setenv("CONFIG_TEST_NAME", "from-env")
 
-	l, err := Load("svc")
+	l, err := Load("svc", EnvProd)
 	require.NoError(t, err)
 	assert.Equal(t, "from-env", l.GetString("config_test_name"))
 	assert.Equal(t, "kept", l.GetString("config_test_keep"))
@@ -340,10 +326,10 @@ func TestLoad_EnvOverridesFile(t *testing.T) {
 
 // TestLoad_KeysAreCaseInsensitive checks that a key in upper case in the file is found with a key in any case.
 func TestLoad_KeysAreCaseInsensitive(t *testing.T) {
-	dir := isolate(t, "SVC_CONFIG_FILE")
+	dir := isolate(t)
 	writeFile(t, filepath.Join(dir, ".prod.env"), "APP_NAME=demo\n")
 
-	l, err := Load("svc")
+	l, err := Load("svc", EnvProd)
 	require.NoError(t, err)
 	assert.Equal(t, "demo", l.GetString("app_name"))
 	assert.Equal(t, "demo", l.GetString("APP_NAME"))
@@ -351,32 +337,30 @@ func TestLoad_KeysAreCaseInsensitive(t *testing.T) {
 }
 
 func TestLoad_TypedGetters(t *testing.T) {
-	isolate(t, "SVC_CONFIG_FILE")
-	path := filepath.Join(t.TempDir(), "app.yaml")
-	// YAML does not accept tabs for indentation.
-	// A slice of lines keeps the content correct when a formatter indents the code.
+	dir := isolate(t)
+	path := filepath.Join(dir, "cmd", "svc", ".prod.env")
+	// A dotenv file stores each value as a string. The loader converts it.
 	writeFile(
 		t,
 		path,
 		strings.Join([]string{
-			"str: hello",
-			"int: -42",
-			"u8: 200",
-			"u16: 60000",
-			"u32: 4000000000",
-			"u64: 18000000000000000000",
-			"f64: 3.5",
-			"flag: true",
-			"at: 2026-01-02T03:04:05Z",
-			"timeout: 1500ms",
-			"zero: 0",
-			`list: " a, b ,,c "`,
+			"STR=hello",
+			"INT=-42",
+			"U8=200",
+			"U16=60000",
+			"U32=4000000000",
+			"U64=18000000000000000000",
+			"F64=3.5",
+			"FLAG=true",
+			"AT=2026-01-02T03:04:05Z",
+			"TIMEOUT=1500ms",
+			"ZERO=0",
+			`LIST=" a, b ,,c "`,
 		},
 			"\n")+"\n",
 	)
-	t.Setenv("SVC_CONFIG_FILE", path)
 
-	l, err := Load("svc")
+	l, err := Load("svc", EnvProd)
 	require.NoError(t, err)
 
 	assert.Equal(t, "hello", l.GetString("str"))
@@ -394,12 +378,11 @@ func TestLoad_TypedGetters(t *testing.T) {
 
 // TestLoad_IsSetZeroValue checks that IsSet tells an explicit zero value from an absent key.
 func TestLoad_IsSetZeroValue(t *testing.T) {
-	isolate(t, "SVC_CONFIG_FILE")
-	path := filepath.Join(t.TempDir(), "app.yaml")
-	writeFile(t, path, "zero: 0\nempty: \"\"\noff: false\n")
-	t.Setenv("SVC_CONFIG_FILE", path)
+	dir := isolate(t)
+	path := filepath.Join(dir, "cmd", "svc", ".prod.env")
+	writeFile(t, path, "ZERO=0\nEMPTY=\"\"\nOFF=false\n")
 
-	l, err := Load("svc")
+	l, err := Load("svc", EnvProd)
 	require.NoError(t, err)
 
 	for _, key := range []string{"zero", "empty", "off"} {
@@ -416,54 +399,10 @@ func TestLoad_IsSetZeroValue(t *testing.T) {
 }
 
 func TestLoad_NotFound(t *testing.T) {
-	isolate(t, "SVC_CONFIG_FILE")
+	isolate(t)
 
-	l, err := Load("svc")
+	l, err := Load("svc", EnvProd)
 	require.Error(t, err)
 	assert.Nil(t, l)
 	assert.Contains(t, err.Error(), "svc config not found")
-}
-
-func TestLoad_InvalidContent(t *testing.T) {
-	isolate(t, "SVC_CONFIG_FILE")
-	path := filepath.Join(t.TempDir(), "app.json")
-	writeFile(t, path, "{not json")
-	t.Setenv("SVC_CONFIG_FILE", path)
-
-	l, err := Load("svc")
-	require.Error(t, err)
-	assert.Nil(t, l)
-}
-
-// TestLoad_EnvFileExtension checks that Load reads the file in SVC_CONFIG_FILE.
-// It must not read a file with the same base name and a different extension.
-func TestLoad_EnvFileExtension(t *testing.T) {
-	isolate(t, "SVC_CONFIG_FILE")
-	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "app.json"), `{"k":"json"}`)
-	writeFile(t, filepath.Join(dir, "app.yaml"), "k: yaml\n")
-	t.Setenv("SVC_CONFIG_FILE", filepath.Join(dir, "app.yaml"))
-
-	l, err := Load("svc")
-	require.NoError(t, err)
-	assert.Equal(t, "yaml", l.GetString("k"))
-}
-
-// TestLoad_UnsupportedExtension checks that a file with an extension that viper does not know is an error.
-func TestLoad_UnsupportedExtension(t *testing.T) {
-	for _, name := range []string{"app.txt", "app"} {
-		t.Run(name, func(t *testing.T) {
-			isolate(t, "SVC_CONFIG_FILE")
-			path := filepath.Join(t.TempDir(), name)
-			writeFile(t, path, "a=1\n")
-			t.Setenv("SVC_CONFIG_FILE", path)
-
-			l, err := Load("svc")
-			require.Error(t, err)
-			assert.Nil(t, l)
-
-			var unsupported viper.UnsupportedConfigError
-			assert.True(t, errors.As(err, &unsupported))
-		})
-	}
 }

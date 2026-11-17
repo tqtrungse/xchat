@@ -11,37 +11,27 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/spf13/viper"
 )
 
-type Loader interface {
-	// IsSet distinguishes an absent key from an explicitly configured zero value.
-	IsSet(key string) bool
+// Env selects the environment file that Load reads.
+type Env uint8
 
-	GetString(key string) string
+const (
+	// EnvProd reads cmd/SERVICE/.prod.env.
+	EnvProd Env = iota
 
-	GetInt(key string) int
-	GetUint8(key string) uint8
-	GetUint16(key string) uint16
-	GetUint32(key string) uint32
-	GetUint64(key string) uint64
+	// EnvLocal reads cmd/SERVICE/.local.env.
+	EnvLocal
+)
 
-	GetFloat64(key string) float64
-
-	GetBool(key string) bool
-
-	GetTime(key string) time.Time
-	GetDuration(key string) time.Duration
-}
-
-func Load(serviceName string) (Loader, error) {
-	path, err := findPath(serviceName)
+// Load reads the config file of the service and the environment.
+func Load(serviceName string, env Env) (Loader, error) {
+	path, err := findPath(serviceName, env)
 	if err != nil {
 		return nil, err
 	}
-
 	return defaultLoader(path)
 }
 
@@ -77,38 +67,27 @@ func defaultLoader(path string) (Loader, error) {
 	return v, nil
 }
 
-func findPath(serviceName string) (string, error) {
-	var (
-		envConfigFile = fmt.Sprintf("%s_CONFIG_FILE", strings.ToUpper(serviceName))
-		path          = os.Getenv(envConfigFile)
-	)
-
-	if len(path) > 0 {
-		absPath, err := filepath.Abs(path)
-		if err != nil {
-			return "", err
-		}
-		if _, err = os.Stat(absPath); err != nil {
-			return "", fmt.Errorf("%s %q: %w", envConfigFile, absPath, err)
-		}
-		return absPath, nil
+func findPath(serviceName string, env Env) (string, error) {
+	envFile, err := env.fileName()
+	if err != nil {
+		return "", err
 	}
 
 	serviceName = strings.ToLower(serviceName)
 	candidates := []string{
-		filepath.Join("cmd", serviceName, ".prod.env"),
-		".prod.env",
+		filepath.Join("cmd", serviceName, envFile),
+		envFile,
 	}
-	if executable, err := os.Executable(); err == nil {
-		candidates = append(candidates, filepath.Join(filepath.Dir(executable), ".prod.env"))
+	if executable, exeErr := os.Executable(); exeErr == nil {
+		candidates = append(candidates, filepath.Join(filepath.Dir(executable), envFile))
 	}
 
+	var absPath string
 	for _, candidate := range candidates {
-		absPath, err := filepath.Abs(candidate)
+		absPath, err = filepath.Abs(candidate)
 		if err != nil {
 			return "", err
 		}
-
 		if _, err = os.Stat(absPath); err == nil {
 			return absPath, nil
 		}
@@ -117,9 +96,23 @@ func findPath(serviceName string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf(
-		"%s config not found; set %s or provide cmd/%s/.prod.env",
+		"%s config not found; provide cmd/%s/%s",
 		serviceName,
-		envConfigFile,
 		serviceName,
+		envFile,
 	)
+}
+
+// fileName gives the environment file name.
+func (e Env) fileName() (string, error) {
+	switch e {
+	case EnvProd:
+		return ".prod.env", nil
+
+	case EnvLocal:
+		return ".local.env", nil
+
+	default:
+		return "", fmt.Errorf("unknown config environment %d", e)
+	}
 }
