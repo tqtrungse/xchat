@@ -153,11 +153,11 @@ func TestBuildMySQLDSNTimeouts(t *testing.T) {
 		3*time.Second,
 		false,
 	)
-	cfg, err := gomysql.ParseDSN(dsn)
+	config, err := gomysql.ParseDSN(dsn)
 	require.NoError(t, err)
-	require.Equal(t, time.Second, cfg.Timeout)
-	require.Equal(t, 2*time.Second, cfg.ReadTimeout)
-	require.Equal(t, 3*time.Second, cfg.WriteTimeout)
+	require.Equal(t, time.Second, config.Timeout)
+	require.Equal(t, 2*time.Second, config.ReadTimeout)
+	require.Equal(t, 3*time.Second, config.WriteTimeout)
 }
 
 func TestBuildMySQLDSNOmitsNegativeTimeouts(t *testing.T) {
@@ -174,11 +174,11 @@ func TestBuildMySQLDSNOmitsNegativeTimeouts(t *testing.T) {
 	require.NotContains(t, dsn, "timeout=")
 	require.NotContains(t, dsn, "Timeout=")
 
-	cfg, err := gomysql.ParseDSN(dsn)
+	config, err := gomysql.ParseDSN(dsn)
 	require.NoError(t, err)
-	require.Zero(t, cfg.Timeout, "the driver uses no dial timeout")
-	require.Zero(t, cfg.ReadTimeout, "the driver uses no read timeout")
-	require.Zero(t, cfg.WriteTimeout, "the driver uses no write timeout")
+	require.Zero(t, config.Timeout, "the driver uses no dial timeout")
+	require.Zero(t, config.ReadTimeout, "the driver uses no read timeout")
+	require.Zero(t, config.WriteTimeout, "the driver uses no write timeout")
 }
 
 // TestMySQL_OpenWithoutReplicas verifies that an empty replica configuration
@@ -711,12 +711,12 @@ func newMySQLRoutingFixture(t *testing.T, withReplica bool) *mysqlRoutingFixture
 			WillReturnRows(sqlmock.NewRows([]string{"version"}).AddRow("8.0.36"))
 	}
 
-	cfg := Config{PrimaryAddr: "primary:3306"}
+	config := Config{PrimaryAddr: "primary:3306"}
 	if withReplica {
 		f.replica, f.replicaMock, err = sqlmock.New(sqlmock.MonitorPingsOption(true))
 		require.NoError(t, err)
 
-		cfg.ReplicaAddrs = []string{"replica:3306"}
+		config.ReplicaAddrs = []string{"replica:3306"}
 		f.replicaMock.
 			ExpectQuery("^SELECT VERSION\\(\\)$").
 			WillReturnRows(sqlmock.NewRows([]string{"version"}).AddRow("8.0.36"))
@@ -733,7 +733,7 @@ func newMySQLRoutingFixture(t *testing.T, withReplica bool) *mysqlRoutingFixture
 		}
 		return f.replica, nil
 	}
-	closeDB, err = db.Open(t.Context(), cfg)
+	closeDB, err = db.Open(t.Context(), config)
 	require.NoError(t, err)
 	require.NotNil(t, closeDB)
 	f.db = db

@@ -17,9 +17,9 @@ import (
 )
 
 func testEncoderConfig() EncoderConfig {
-	cfg := zap.NewProductionEncoderConfig()
-	cfg.EncodeTime = upstream.ISO8601TimeEncoder
-	return cfg
+	config := zap.NewProductionEncoderConfig()
+	config.EncodeTime = upstream.ISO8601TimeEncoder
+	return config
 }
 
 func testEntry() Entry {

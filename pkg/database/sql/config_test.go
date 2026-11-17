@@ -34,14 +34,11 @@ func TestConfigLoadDefaults(t *testing.T) {
 		SlowThreshold: 200 * time.Millisecond,
 	}
 
-	t.Run(
-		"unset keys",
-		func(t *testing.T) {
-			cfg, err := LoadConfig(requiredLoader())
-			require.NoError(t, err)
-			require.Equal(t, want, cfg)
-		},
-	)
+	t.Run("unset keys", func(t *testing.T) {
+		dbConfig, err := LoadConfig(requiredLoader())
+		require.NoError(t, err)
+		require.Equal(t, want, dbConfig)
+	})
 }
 
 func TestConfigLoadRequiredFields(t *testing.T) {
@@ -50,30 +47,24 @@ func TestConfigLoadRequiredFields(t *testing.T) {
 		"SQL_DATABASE_USER",
 		"SQL_DATABASE_NAME",
 	} {
-		t.Run(
-			key,
-			func(t *testing.T) {
-				l := requiredLoader()
-				l.Set(key, " ")
-				_, err := LoadConfig(l)
-				require.EqualError(t, err, key+" is required")
-			},
-		)
+		t.Run(key, func(t *testing.T) {
+			l := requiredLoader()
+			l.Set(key, " ")
+			_, err := LoadConfig(l)
+			require.EqualError(t, err, key+" is required")
+		})
 	}
 
-	t.Run(
-		"nil loader",
-		func(t *testing.T) {
-			_, err := LoadConfig(nil)
-			require.EqualError(t, err, "SQL_DATABASE_PRIMARY_ADDRESS is required")
-		},
-	)
+	t.Run("nil loader", func(t *testing.T) {
+		_, err := LoadConfig(nil)
+		require.EqualError(t, err, "SQL_DATABASE_PRIMARY_ADDRESS is required")
+	})
 }
 
 func TestPoolConfigLoadDefaults(t *testing.T) {
 	for _, loader := range []config.Loader{nil, viper.New()} {
-		cfg := loadPoolConfig(loader)
-		require.Equal(t, PoolConfig{}, cfg)
+		poolConfig := loadPoolConfig(loader)
+		require.Equal(t, PoolConfig{}, poolConfig)
 	}
 }
 
@@ -82,10 +73,10 @@ func TestConfigLoadPreservesExplicitValues(t *testing.T) {
 	l.Set("SQL_DATABASE_MAX_OPEN_CONNS", 8)
 	l.Set("SQL_DATABASE_MAX_IDLE_CONNS", 0)
 
-	cfg, err := LoadConfig(l)
+	dbConfig, err := LoadConfig(l)
 	require.NoError(t, err)
-	require.Equal(t, 8, cfg.Pool.MaxOpenConns)
-	require.Zero(t, cfg.Pool.MaxIdleConns)
+	require.Equal(t, 8, dbConfig.Pool.MaxOpenConns)
+	require.Zero(t, dbConfig.Pool.MaxIdleConns)
 }
 
 func TestConfigLoadTimeoutOverrides(t *testing.T) {
@@ -130,23 +121,20 @@ func TestConfigLoadTimeoutOverrides(t *testing.T) {
 			want:  same(-time.Second),
 		},
 	} {
-		t.Run(
-			tc.name,
-			func(t *testing.T) {
-				loader := requiredLoader()
-				loader.Set("SQL_DATABASE_DIAL_TIMEOUT", tc.value)
-				loader.Set("SQL_DATABASE_READ_TIMEOUT", tc.value)
-				loader.Set("SQL_DATABASE_WRITE_TIMEOUT", tc.value)
-				loader.Set("SQL_DATABASE_SLOW_THRESHOLD", tc.value)
+		t.Run(tc.name, func(t *testing.T) {
+			loader := requiredLoader()
+			loader.Set("SQL_DATABASE_DIAL_TIMEOUT", tc.value)
+			loader.Set("SQL_DATABASE_READ_TIMEOUT", tc.value)
+			loader.Set("SQL_DATABASE_WRITE_TIMEOUT", tc.value)
+			loader.Set("SQL_DATABASE_SLOW_THRESHOLD", tc.value)
 
-				cfg, err := LoadConfig(loader)
-				require.NoError(t, err)
-				require.Equal(t, tc.want(defaults.DialTimeout), cfg.DialTimeout)
-				require.Equal(t, tc.want(defaults.ReadTimeout), cfg.ReadTimeout)
-				require.Equal(t, tc.want(defaults.WriteTimeout), cfg.WriteTimeout)
-				require.Equal(t, tc.want(defaults.SlowThreshold), cfg.SlowThreshold)
-			},
-		)
+			dbConfig, err := LoadConfig(loader)
+			require.NoError(t, err)
+			require.Equal(t, tc.want(defaults.DialTimeout), dbConfig.DialTimeout)
+			require.Equal(t, tc.want(defaults.ReadTimeout), dbConfig.ReadTimeout)
+			require.Equal(t, tc.want(defaults.WriteTimeout), dbConfig.WriteTimeout)
+			require.Equal(t, tc.want(defaults.SlowThreshold), dbConfig.SlowThreshold)
+		})
 	}
 }
 
@@ -154,11 +142,11 @@ func TestConfigLoadPartialTimeoutOverride(t *testing.T) {
 	loader := requiredLoader()
 	loader.Set("SQL_DATABASE_READ_TIMEOUT", "30s")
 
-	cfg, err := LoadConfig(loader)
+	dbConfig, err := LoadConfig(loader)
 	require.NoError(t, err)
-	require.Equal(t, 3*time.Second, cfg.DialTimeout)
-	require.Equal(t, 30*time.Second, cfg.ReadTimeout)
-	require.Equal(t, 5*time.Second, cfg.WriteTimeout)
+	require.Equal(t, 3*time.Second, dbConfig.DialTimeout)
+	require.Equal(t, 30*time.Second, dbConfig.ReadTimeout)
+	require.Equal(t, 5*time.Second, dbConfig.WriteTimeout)
 }
 
 func TestConfigLoadTimeoutsFromEnvironment(t *testing.T) {
@@ -168,21 +156,21 @@ func TestConfigLoadTimeoutsFromEnvironment(t *testing.T) {
 	loader := requiredLoader()
 	loader.AutomaticEnv()
 
-	cfg, err := LoadConfig(loader)
+	dbConfig, err := LoadConfig(loader)
 	require.NoError(t, err)
-	require.Equal(t, 3*time.Second, cfg.DialTimeout)
-	require.Equal(t, 20*time.Second, cfg.ReadTimeout)
-	require.Equal(t, -time.Second, cfg.WriteTimeout)
+	require.Equal(t, 3*time.Second, dbConfig.DialTimeout)
+	require.Equal(t, 20*time.Second, dbConfig.ReadTimeout)
+	require.Equal(t, -time.Second, dbConfig.WriteTimeout)
 }
 
 func TestConfigApplyDefaultKeepsNegativeLimits(t *testing.T) {
-	cfg := Config{
+	dbConfig := Config{
 		ReadTimeout:   -1,
 		SlowThreshold: -1,
 	}
-	cfg.applyDefault()
-	require.Equal(t, 3*time.Second, cfg.DialTimeout)
-	require.EqualValues(t, -1, cfg.ReadTimeout)
-	require.Equal(t, 5*time.Second, cfg.WriteTimeout)
-	require.EqualValues(t, -1, cfg.SlowThreshold)
+	dbConfig.applyDefault()
+	require.Equal(t, 3*time.Second, dbConfig.DialTimeout)
+	require.EqualValues(t, -1, dbConfig.ReadTimeout)
+	require.Equal(t, 5*time.Second, dbConfig.WriteTimeout)
+	require.EqualValues(t, -1, dbConfig.SlowThreshold)
 }

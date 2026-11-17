@@ -16,6 +16,9 @@ import (
 )
 
 func TestConfigLoadDefaults(t *testing.T) {
+	defaultConfig := Config{}
+	defaultConfig.applyDefault()
+
 	for _, tc := range []struct {
 		name   string
 		loader config.Loader
@@ -30,8 +33,8 @@ func TestConfigLoadDefaults(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := LoadConfig(tc.loader)
-			require.Equal(t, DefaultConfig(), cfg)
+			config := LoadConfig(tc.loader)
+			require.Equal(t, defaultConfig, config)
 		})
 	}
 }
@@ -42,9 +45,9 @@ func TestConfigLoadPreservesExplicitValues(t *testing.T) {
 	l.Set("LOGGER_FLUSH_INTERVAL", "1s")
 	l.Set("LOGGER_DISABLE_SAMPLING", true)
 
-	cfg := LoadConfig(l)
-	require.Equal(t, 32, cfg.QueueSize)
-	require.Equal(t, time.Second, cfg.FlushInterval)
-	require.True(t, cfg.DisableSampling)
-	require.Equal(t, defaultBufferSize, cfg.BufferSize)
+	config := LoadConfig(l)
+	require.Equal(t, 32, config.QueueSize)
+	require.Equal(t, time.Second, config.FlushInterval)
+	require.True(t, config.DisableSampling)
+	require.Equal(t, defaultBufferSize, config.BufferSize)
 }

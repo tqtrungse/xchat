@@ -32,30 +32,30 @@ type AuthConfig struct {
 }
 
 type auth struct {
-	jwks keyfunc.Keyfunc
-	cfg  AuthConfig
+	jwks   keyfunc.Keyfunc
+	config AuthConfig
 }
 
-func NewAuth(ctx context.Context, cfg AuthConfig) (Auth, error) {
+func NewAuth(ctx context.Context, config AuthConfig) (Auth, error) {
 	// These checks do not depend on the config layer. They keep the
 	// invariant of this package: an Auth has each OIDC setting.
-	if cfg.Issuer == "" {
+	if config.Issuer == "" {
 		return nil, ErrIssuerRequired
 	}
-	if cfg.Audience == "" {
+	if config.Audience == "" {
 		return nil, ErrAudienceRequired
 	}
-	if cfg.JWKSURL == "" {
+	if config.JWKSURL == "" {
 		return nil, ErrJwksUrlRequired
 	}
 
-	jwks, err := keyfunc.NewDefaultCtx(ctx, []string{cfg.JWKSURL})
+	jwks, err := keyfunc.NewDefaultCtx(ctx, []string{config.JWKSURL})
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch JWKS: %w", err)
 	}
 	return &auth{
-		jwks: jwks,
-		cfg:  cfg,
+		jwks:   jwks,
+		config: config,
 	}, nil
 }
 
@@ -67,8 +67,8 @@ func (v *auth) Verify(token string) (*Claims, error) {
 		v.jwks.Keyfunc,
 		// Force signature algorithm to prevent algorithm confusion attacks.
 		jwt.WithValidMethods([]string{"RS256"}),
-		jwt.WithIssuer(v.cfg.Issuer),
-		jwt.WithAudience(v.cfg.Audience),
+		jwt.WithIssuer(v.config.Issuer),
+		jwt.WithAudience(v.config.Audience),
 		jwt.WithExpirationRequired(),
 		jwt.WithLeeway(clockSkew),
 	)

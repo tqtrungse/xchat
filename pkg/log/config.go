@@ -25,12 +25,6 @@ const (
 	minBufferSize = 16
 )
 
-func DefaultConfig() Config {
-	cfg := Config{}
-	cfg.applyDefault()
-	return cfg
-}
-
 // Config sets the behavior of the asynchronous stdout sink.
 //
 // The logger encodes each entry as JSON. Then it sends the entry to one

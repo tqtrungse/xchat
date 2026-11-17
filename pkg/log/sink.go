@@ -89,23 +89,23 @@ type asyncSink struct {
 }
 
 // newAsyncSink starts the writer goroutine for dst. The caller must apply
-// the defaults to cfg before this call.
+// the defaults to config before this call.
 func newAsyncSink(
-	cfg *Config,
+	config *Config,
 	dst io.Writer,
 	diagnostics io.Writer,
 	now func() time.Time,
 ) *asyncSink {
 	s := &asyncSink{
-		queue:         make(chan *buffer.Buffer, cfg.QueueSize),
+		queue:         make(chan *buffer.Buffer, config.QueueSize),
 		sync:          make(chan chan struct{}),
 		quit:          make(chan struct{}),
 		stopped:       make(chan struct{}),
-		flushInterval: cfg.FlushInterval,
-		syncTimeout:   cfg.SyncTimeout,
+		flushInterval: config.FlushInterval,
+		syncTimeout:   config.SyncTimeout,
 		now:           now,
 		diagnostics:   diagnostics,
-		bw:            bufio.NewWriterSize(dst, cfg.BufferSize),
+		bw:            bufio.NewWriterSize(dst, config.BufferSize),
 		syncFn:        syncFuncFor(dst),
 	}
 	go s.loop()

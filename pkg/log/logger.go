@@ -61,7 +61,7 @@ type Logger struct {
 // write an Error before an Info from an earlier time. The sampler is the
 // protection that keeps the queue from a full condition.
 //
-// NewLogger copies cfg and puts the default value in each field that is not
+// NewLogger copies config and puts the default value in each field that is not
 // set. Therefore, a call to LoadConfig before NewLogger is not necessary,
 // and NewLogger does not change the Config of the caller.
 //
@@ -81,22 +81,22 @@ type Logger struct {
 // A second call gives the result of the first call, and concurrent calls are
 // safe. Do not write a log after closeFn. Write accepts the entry, but the
 // sink does not write it.
-func NewLogger(cfg Config) (l *Logger, closeFn func() error, err error) {
-	return newLogger(&cfg, os.Stdout, os.Stderr, time.Now)
+func NewLogger(config Config) (l *Logger, closeFn func() error, err error) {
+	return newLogger(&config, os.Stdout, os.Stderr, time.Now)
 }
 
 // newLogger is NewLogger with the destination, the diagnostics writer and
 // the clock as parameters. A test can then read the output and control the
 // drop notices.
 func newLogger(
-	cfg *Config,
+	config *Config,
 	dst io.Writer,
 	diagnostics io.Writer,
 	now func() time.Time,
 ) (l *Logger, closeFn func() error, err error) {
-	cfg.applyDefault()
+	config.applyDefault()
 
-	err = cfg.validate()
+	err = config.validate()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -107,7 +107,7 @@ func newLogger(
 		atomicLevel: zap.NewAtomicLevelAt(zap.InfoLevel),
 		shutdown:    &shutdown{},
 	}
-	l.sink = newAsyncSink(cfg, dst, diagnostics, now)
+	l.sink = newAsyncSink(config, dst, diagnostics, now)
 
 	encoderConfig := zap.NewProductionEncoderConfig()
 	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
@@ -122,12 +122,12 @@ func newLogger(
 			return l.atomicLevel.Enabled(lvl) && lvl < zapcore.ErrorLevel
 		}),
 	)
-	if !cfg.DisableSampling {
+	if !config.DisableSampling {
 		lowCore = zapcore.NewSamplerWithOptions(
 			lowCore,
 			time.Second,
-			cfg.SampleFirst,
-			cfg.SampleThereafter,
+			config.SampleFirst,
+			config.SampleThereafter,
 		)
 	}
 

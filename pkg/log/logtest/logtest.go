@@ -30,10 +30,10 @@ import (
 // The sink holds each entry in a queue and in a buffer. Therefore, call
 // log.Logger.Sync or the shutdown function before a read of the file.
 //
-// Sampling is off, unless cfg.SampleFirst is more than zero. A test that
+// Sampling is off, unless config.SampleFirst is more than zero. A test that
 // counts entries cannot accept a sampler, because the sampler removes some
 // entries of a message that repeats.
-func New(t *testing.T, cfg log.Config) (logger *log.Logger, closeFn func() error, path string) {
+func New(t *testing.T, config log.Config) (logger *log.Logger, closeFn func() error, path string) {
 	t.Helper()
 
 	path = filepath.Join(t.TempDir(), "test.log")
@@ -43,13 +43,13 @@ func New(t *testing.T, cfg log.Config) (logger *log.Logger, closeFn func() error
 	}
 	t.Cleanup(func() { _ = file.Close() })
 
-	if cfg.SampleFirst <= 0 {
-		cfg.DisableSampling = true
+	if config.SampleFirst <= 0 {
+		config.DisableSampling = true
 	}
 
 	stdout := os.Stdout
 	os.Stdout = file
-	logger, closeFn, err = log.NewLogger(cfg)
+	logger, closeFn, err = log.NewLogger(config)
 	os.Stdout = stdout
 	if err != nil {
 		t.Fatalf("logtest: new logger: %v", err)

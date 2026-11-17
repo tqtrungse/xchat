@@ -64,25 +64,25 @@ type jsonEncoder struct {
 // When many libraries unmarshal such a message, they ignore the duplicate
 // key-value pairs. Usually, they keep the last pair. Do not add duplicate
 // keys.
-func NewJSONEncoder(cfg EncoderConfig) Encoder {
-	return newJSONEncoder(cfg, false)
+func NewJSONEncoder(config EncoderConfig) Encoder {
+	return newJSONEncoder(config, false)
 }
 
-func newJSONEncoder(cfg EncoderConfig, spaced bool) *jsonEncoder {
-	if cfg.SkipLineEnding {
-		cfg.LineEnding = ""
-	} else if cfg.LineEnding == "" {
-		cfg.LineEnding = DefaultLineEnding
+func newJSONEncoder(config EncoderConfig, spaced bool) *jsonEncoder {
+	if config.SkipLineEnding {
+		config.LineEnding = ""
+	} else if config.LineEnding == "" {
+		config.LineEnding = DefaultLineEnding
 	}
 
 	// Use the default reflected encoder if the user gives no
 	// EncoderConfig.NewReflectedEncoder.
-	if cfg.NewReflectedEncoder == nil {
-		cfg.NewReflectedEncoder = defaultReflectedEncoder
+	if config.NewReflectedEncoder == nil {
+		config.NewReflectedEncoder = defaultReflectedEncoder
 	}
 
 	return &jsonEncoder{
-		EncoderConfig: &cfg,
+		EncoderConfig: &config,
 		buf:           buffer.Get(),
 		spaced:        spaced,
 	}

@@ -53,7 +53,7 @@ func readLogLines(t *testing.T, path string) []map[string]any {
 //
 // Sampling is off unless the test asks for it. Most tests count entries, and
 // a sampler would remove some of a message that repeats.
-func newTestLogger(t *testing.T, cfg *Config) (*Logger, func() error, string) {
+func newTestLogger(t *testing.T, config *Config) (*Logger, func() error, string) {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "test.log")
@@ -62,10 +62,10 @@ func newTestLogger(t *testing.T, cfg *Config) (*Logger, func() error, string) {
 	t.Cleanup(func() { _ = f.Close() })
 
 	var full Config
-	if cfg != nil {
-		full = *cfg
+	if config != nil {
+		full = *config
 	}
-	if cfg == nil || cfg.SampleFirst <= 0 {
+	if config == nil || config.SampleFirst <= 0 {
 		full.DisableSampling = true
 	}
 
@@ -95,14 +95,14 @@ func TestNewLogger_RejectsBufferSizeBelowMinimum(t *testing.T) {
 }
 
 func TestNewLogger_DoesNotMutateCallerConfig(t *testing.T) {
-	cfg := Config{}
-	_, closeFn, err := newLogger(&cfg, io.Discard, io.Discard, time.Now)
+	config := Config{}
+	_, closeFn, err := newLogger(&config, io.Discard, io.Discard, time.Now)
 	require.NoError(t, err)
 	defer func() { _ = closeFn() }()
 
-	cfgExpected := Config{}
-	cfgExpected.applyDefault()
-	assert.Equal(t, cfgExpected, cfg, "NewLogger must apply defaults to a copy")
+	expectConfig := Config{}
+	expectConfig.applyDefault()
+	assert.Equal(t, expectConfig, config, "NewLogger must apply defaults to a copy")
 }
 
 func TestLogger_WritesExpectedFields(t *testing.T) {

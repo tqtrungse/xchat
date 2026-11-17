@@ -175,8 +175,8 @@ func NewMySql(logger *log.Logger) DB {
 	}
 }
 
-func (m *mysql) Open(ctx context.Context, cfg Config) (func() error, error) {
-	cfg.applyDefault()
+func (m *mysql) Open(ctx context.Context, config Config) (func() error, error) {
+	config.applyDefault()
 
 	var (
 		primary  *sql.DB
@@ -202,16 +202,16 @@ func (m *mysql) Open(ctx context.Context, cfg Config) (func() error, error) {
 		ctx,
 		"mysql",
 		buildMySqlDSN(
-			cfg.User,
-			cfg.Password,
-			cfg.PrimaryAddr,
-			cfg.DBName,
-			cfg.DialTimeout,
-			cfg.ReadTimeout,
-			cfg.WriteTimeout,
+			config.User,
+			config.Password,
+			config.PrimaryAddr,
+			config.DBName,
+			config.DialTimeout,
+			config.ReadTimeout,
+			config.WriteTimeout,
 			false,
 		),
-		cfg.Pool,
+		config.Pool,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("open source pool: %w", err)
@@ -231,44 +231,44 @@ func (m *mysql) Open(ctx context.Context, cfg Config) (func() error, error) {
 			DisableAutomaticPing: true,
 			// Without this field GORM takes logger.Default, which writes
 			// plain text to os.Stdout outside the sink of pkg/log.
-			Logger: m.buildLogger(cfg),
+			Logger: m.buildLogger(config),
 		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("gorm.Open: %w", err)
 	}
 
-	resolverCfg := dbresolver.Config{
+	resolverConfig := dbresolver.Config{
 		Sources: []gorm.Dialector{primaryDialector},
 		Policy:  dbresolver.RandomPolicy{},
 	}
 
-	replicas = make([]*sql.DB, 0, len(cfg.ReplicaAddrs))
-	for i, replicaAddr := range cfg.ReplicaAddrs {
+	replicas = make([]*sql.DB, 0, len(config.ReplicaAddrs))
+	for i, replicaAddr := range config.ReplicaAddrs {
 		replica, repErr := m.openPool(
 			ctx,
 			"mysql",
 			buildMySqlDSN(
-				cfg.User,
-				cfg.Password,
+				config.User,
+				config.Password,
 				replicaAddr,
-				cfg.DBName,
-				cfg.DialTimeout,
-				cfg.ReadTimeout,
-				cfg.WriteTimeout,
+				config.DBName,
+				config.DialTimeout,
+				config.ReadTimeout,
+				config.WriteTimeout,
 				false,
 			),
-			cfg.Pool,
+			config.Pool,
 		)
 		if repErr != nil {
 			return nil, fmt.Errorf("open replica pool %d (%s): %w", i, replicaAddr, repErr)
 		}
 
 		replicas = append(replicas, replica)
-		resolverCfg.Replicas = append(resolverCfg.Replicas, newMySQLDialector(ctx, replica))
+		resolverConfig.Replicas = append(resolverConfig.Replicas, newMySQLDialector(ctx, replica))
 	}
 
-	err = db.Use(dbresolver.Register(resolverCfg))
+	err = db.Use(dbresolver.Register(resolverConfig))
 	if err != nil {
 		return nil, fmt.Errorf("register dbresolver: %w", err)
 	}
@@ -366,14 +366,14 @@ func (m *mysql) WithDB(
 //
 // The component logger shares the sink of m.logger, so Close must not close
 // it: the owner of m.logger closes that sink.
-func (m *mysql) buildLogger(cfg Config) gormlogger.Interface {
+func (m *mysql) buildLogger(config Config) gormlogger.Interface {
 	if m.logger == nil {
 		return gormlogger.Discard
 	}
 	return newGormLogger(
 		m.logger,
-		cfg.SlowThreshold,
-		cfg.LogParameters,
+		config.SlowThreshold,
+		config.LogParameters,
 	)
 }
 
@@ -392,18 +392,18 @@ func buildMySqlDSN(
 	writeTimeout time.Duration,
 	multiStatements bool,
 ) string {
-	cfg := gomysql.NewConfig()
-	cfg.User = user
-	cfg.Passwd = password
-	cfg.Net = "tcp"
-	cfg.Addr = addr
-	cfg.DBName = dbName
-	cfg.Loc = time.UTC
-	cfg.Params = map[string]string{"charset": "utf8mb4"}
-	cfg.Timeout = dialTimeout
-	cfg.ReadTimeout = readTimeout
-	cfg.WriteTimeout = writeTimeout
-	cfg.MultiStatements = multiStatements
-	cfg.ParseTime = true
-	return cfg.FormatDSN()
+	config := gomysql.NewConfig()
+	config.User = user
+	config.Passwd = password
+	config.Net = "tcp"
+	config.Addr = addr
+	config.DBName = dbName
+	config.Loc = time.UTC
+	config.Params = map[string]string{"charset": "utf8mb4"}
+	config.Timeout = dialTimeout
+	config.ReadTimeout = readTimeout
+	config.WriteTimeout = writeTimeout
+	config.MultiStatements = multiStatements
+	config.ParseTime = true
+	return config.FormatDSN()
 }

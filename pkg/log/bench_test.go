@@ -16,11 +16,11 @@ import (
 // benchLogger makes a logger. The destination of the logger discards each
 // byte. Therefore, the numbers measure the cost that this package adds to
 // one log call, and not the speed of the terminal or the disk under it.
-func benchLogger(b *testing.B, cfg *Config) *Logger {
+func benchLogger(b *testing.B, config *Config) *Logger {
 	b.Helper()
 
 	logger, closeFn, err := newLogger(
-		cfg,
+		config,
 		io.Discard,
 		io.Discard,
 		time.Now,

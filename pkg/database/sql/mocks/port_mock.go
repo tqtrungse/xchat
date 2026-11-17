@@ -42,18 +42,18 @@ func (m *MockDB) EXPECT() *MockDBMockRecorder {
 }
 
 // Open mocks base method.
-func (m *MockDB) Open(ctx context.Context, cfg sql.Config) (func() error, error) {
+func (m *MockDB) Open(ctx context.Context, config sql.Config) (func() error, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Open", ctx, cfg)
+	ret := m.ctrl.Call(m, "Open", ctx, config)
 	ret0, _ := ret[0].(func() error)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Open indicates an expected call of Open.
-func (mr *MockDBMockRecorder) Open(ctx, cfg any) *gomock.Call {
+func (mr *MockDBMockRecorder) Open(ctx, config any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Open", reflect.TypeOf((*MockDB)(nil).Open), ctx, cfg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Open", reflect.TypeOf((*MockDB)(nil).Open), ctx, config)
 }
 
 // Transaction mocks base method.

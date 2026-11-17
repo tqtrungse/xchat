@@ -41,7 +41,7 @@ type CommandFunc func(context.Context) error
 
 type DB interface {
 	// Open initializes the DB. It returns closeFn, the function that cleans up.
-	// Open applies defaults to a copy of cfg.
+	// Open applies defaults to a copy of config.
 	//
 	// Call Open one time for each instance, during initialization.
 	// After a successful Open, call closeFn one time during cleanup.
@@ -52,7 +52,7 @@ type DB interface {
 	//
 	// If Open fails, it cleans up each pool that it created.
 	// It then returns a nil closeFn.
-	Open(ctx context.Context, cfg Config) (closeFn func() error, err error)
+	Open(ctx context.Context, config Config) (closeFn func() error, err error)
 
 	// Transaction runs fn in a transaction on the selected source.
 	//

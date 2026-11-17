@@ -96,9 +96,9 @@ func (w failingWriter) Write([]byte) (int, error) { return 0, w.err }
 // next entry.
 func TestWrite_CopiesPayload(t *testing.T) {
 	var out syncBuffer
-	cfg := Config{}
-	cfg.applyDefault()
-	sink := newAsyncSink(&cfg, &out, io.Discard, time.Now)
+	config := Config{}
+	config.applyDefault()
+	sink := newAsyncSink(&config, &out, io.Discard, time.Now)
 	defer func() { _ = sink.Stop() }()
 
 	payload := []byte("first\n")
@@ -115,9 +115,9 @@ func TestWrite_CopiesPayload(t *testing.T) {
 
 func TestWrite_PreservesOrder(t *testing.T) {
 	var out syncBuffer
-	cfg := Config{}
-	cfg.applyDefault()
-	sink := newAsyncSink(&cfg, &out, io.Discard, time.Now)
+	config := Config{}
+	config.applyDefault()
+	sink := newAsyncSink(&config, &out, io.Discard, time.Now)
 	defer func() { _ = sink.Stop() }()
 
 	const n = 500
@@ -139,12 +139,12 @@ func TestWrite_PreservesOrder(t *testing.T) {
 // and that the count of the discarded entries is correct.
 func TestWrite_DropsWhenQueueFull(t *testing.T) {
 	gate := newGateWriter()
-	cfg := Config{
+	config := Config{
 		QueueSize:  1,
 		BufferSize: minBufferSize,
 	}
-	cfg.applyDefault()
-	sink := newAsyncSink(&cfg, gate, io.Discard, time.Now)
+	config.applyDefault()
+	sink := newAsyncSink(&config, gate, io.Discard, time.Now)
 
 	// The first entry reaches the destination and stays there. The queue is
 	// then empty, and the test can fill it.
@@ -172,9 +172,9 @@ func TestWrite_DropsWhenQueueFull(t *testing.T) {
 // through the logger.
 func TestReportDropped_EmitsNoticeInline(t *testing.T) {
 	var out syncBuffer
-	cfg := Config{}
-	cfg.applyDefault()
-	sink := newAsyncSink(&cfg, &out, io.Discard, time.Now)
+	config := Config{}
+	config.applyDefault()
+	sink := newAsyncSink(&config, &out, io.Discard, time.Now)
 
 	sink.dropped.Store(7)
 	_, err := sink.Write([]byte("after the gap\n"))
@@ -204,9 +204,9 @@ func TestReportDropped_RateLimitedBetweenFlushes(t *testing.T) {
 	now := time.Now()
 	clock := func() time.Time { return now }
 
-	cfg := Config{FlushInterval: time.Millisecond}
-	cfg.applyDefault()
-	sink := newAsyncSink(&cfg, &out, io.Discard, clock)
+	config := Config{FlushInterval: time.Millisecond}
+	config.applyDefault()
+	sink := newAsyncSink(&config, &out, io.Discard, clock)
 
 	// Several background flushes occur while the clock does not move.
 	// Therefore, the interval check must make one notice for all of them.
@@ -222,9 +222,9 @@ func TestReportDropped_RateLimitedBetweenFlushes(t *testing.T) {
 // call.
 func TestSync_DrainsEverythingQueuedBefore(t *testing.T) {
 	var out syncBuffer
-	cfg := &Config{FlushInterval: time.Hour}
-	cfg.applyDefault()
-	sink := newAsyncSink(cfg, &out, io.Discard, time.Now)
+	config := &Config{FlushInterval: time.Hour}
+	config.applyDefault()
+	sink := newAsyncSink(config, &out, io.Discard, time.Now)
 	defer func() { _ = sink.Stop() }()
 
 	const n = 200
@@ -244,13 +244,13 @@ func TestSync_DrainsEverythingQueuedBefore(t *testing.T) {
 
 func TestSync_TimesOutOnWedgedDestination(t *testing.T) {
 	gate := newGateWriter()
-	cfg := Config{
+	config := Config{
 		QueueSize:   1,
 		BufferSize:  minBufferSize,
 		SyncTimeout: 50 * time.Millisecond,
 	}
-	cfg.applyDefault()
-	sink := newAsyncSink(&cfg, gate, io.Discard, time.Now)
+	config.applyDefault()
+	sink := newAsyncSink(&config, gate, io.Discard, time.Now)
 
 	_, err := sink.Write([]byte("an entry long enough to bypass the buffer\n"))
 	require.NoError(t, err)
@@ -268,9 +268,9 @@ func TestSink_ReportsFirstWriteErrorOnce(t *testing.T) {
 	var diagnostics syncBuffer
 	sentinel := errors.New("disk is unhappy")
 
-	cfg := &Config{BufferSize: minBufferSize}
-	cfg.applyDefault()
-	sink := newAsyncSink(cfg, failingWriter{err: sentinel}, &diagnostics, time.Now)
+	config := &Config{BufferSize: minBufferSize}
+	config.applyDefault()
+	sink := newAsyncSink(config, failingWriter{err: sentinel}, &diagnostics, time.Now)
 
 	for range 5 {
 		_, err := sink.Write([]byte("an entry long enough to bypass the buffer\n"))
@@ -291,9 +291,9 @@ func TestStop_IsIdempotentAndStopsWriterGoroutine(t *testing.T) {
 	before := runtime.NumGoroutine()
 
 	var out syncBuffer
-	cfg := Config{}
-	cfg.applyDefault()
-	sink := newAsyncSink(&cfg, &out, io.Discard, time.Now)
+	config := Config{}
+	config.applyDefault()
+	sink := newAsyncSink(&config, &out, io.Discard, time.Now)
 
 	_, err := sink.Write([]byte("entry\n"))
 	require.NoError(t, err)
@@ -316,9 +316,9 @@ func TestStop_IsIdempotentAndStopsWriterGoroutine(t *testing.T) {
 // call must not panic on a closed channel.
 func TestWrite_AfterStopDoesNotPanic(t *testing.T) {
 	var out syncBuffer
-	cfg := Config{QueueSize: 1}
-	cfg.applyDefault()
-	sink := newAsyncSink(&cfg, &out, io.Discard, time.Now)
+	config := Config{QueueSize: 1}
+	config.applyDefault()
+	sink := newAsyncSink(&config, &out, io.Discard, time.Now)
 	require.NoError(t, sink.Stop())
 
 	assert.NotPanics(t, func() {

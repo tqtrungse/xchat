@@ -33,17 +33,17 @@ func openPool(
 	ctx context.Context,
 	driverName string,
 	dsn string,
-	cfg PoolConfig,
+	config PoolConfig,
 ) (*sql.DB, error) {
 	sqlDB, err := sql.Open(driverName, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("sql.Open: %w", err)
 	}
 
-	sqlDB.SetMaxOpenConns(cfg.MaxOpenConns)
-	sqlDB.SetMaxIdleConns(cfg.MaxIdleConns)
-	sqlDB.SetConnMaxLifetime(cfg.ConnMaxLifetime)
-	sqlDB.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+	sqlDB.SetMaxOpenConns(config.MaxOpenConns)
+	sqlDB.SetMaxIdleConns(config.MaxIdleConns)
+	sqlDB.SetConnMaxLifetime(config.ConnMaxLifetime)
+	sqlDB.SetConnMaxIdleTime(config.ConnMaxIdleTime)
 
 	err = sqlDB.PingContext(ctx)
 	if err != nil {
