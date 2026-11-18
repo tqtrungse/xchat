@@ -33,9 +33,10 @@ func Test_UserWriter_Create(t *testing.T) {
 	}
 
 	type testcase struct {
-		prepare func(f *fields)
-		args    user.Info
-		wantErr bool
+		prepare   func(f *fields)
+		args      user.Info
+		wantErr   bool
+		wantErrIs error
 	}
 
 	passwordHash := make([]byte, 255)
@@ -100,6 +101,60 @@ func Test_UserWriter_Create(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		"Duplicate entry": {
+			prepare: func(f *fields) {
+				f.sqlMock.
+					ExpectExec(query).
+					WithArgs(
+						user.ID(11),
+						"sms|123456789",
+						"username",
+						passwordHash,
+						phoneHash,
+						uint16(32),
+						user.StateActive,
+					).
+					WillReturnError(&sql.DuplicateKeyError{Key: "PRIMARY"})
+			},
+			args: user.Info{
+				ID:           user.ID(11),
+				ExternalID:   "sms|123456789",
+				Username:     "username",
+				PasswordHash: passwordHash,
+				PhoneHash:    phoneHash,
+				PhoneTail:    32,
+				State:        user.StateActive,
+			},
+			wantErr:   true,
+			wantErrIs: user.ErrAlreadyExists,
+		},
+		"Duplicate username": {
+			prepare: func(f *fields) {
+				f.sqlMock.
+					ExpectExec(query).
+					WithArgs(
+						user.ID(11),
+						"sms|123456789",
+						"username",
+						passwordHash,
+						phoneHash,
+						uint16(32),
+						user.StateActive,
+					).
+					WillReturnError(&sql.DuplicateKeyError{Key: "unique_index_users_on_username"})
+			},
+			args: user.Info{
+				ID:           user.ID(11),
+				ExternalID:   "sms|123456789",
+				Username:     "username",
+				PasswordHash: passwordHash,
+				PhoneHash:    phoneHash,
+				PhoneTail:    32,
+				State:        user.StateActive,
+			},
+			wantErr:   true,
+			wantErrIs: user.ErrUniqueConflict,
+		},
 	}
 
 	for description, tc := range testCases {
@@ -133,6 +188,9 @@ func Test_UserWriter_Create(t *testing.T) {
 			})
 			if (err != nil) != tc.wantErr {
 				t.Errorf("[datastore] userWrtier.Create error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if tc.wantErrIs != nil && !errors.Is(err, tc.wantErrIs) {
+				t.Errorf("[datastore] userWrtier.Create error = %v, want error %v", err, tc.wantErrIs)
 			}
 		})
 	}

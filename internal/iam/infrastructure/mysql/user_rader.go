@@ -16,6 +16,7 @@ import (
 	"xchat/pkg/database/sql"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type UserReader struct{}
@@ -25,7 +26,7 @@ func NewUserReader() UserReader {
 	return UserReader{}
 }
 
-func (ur *UserReader) Get(dbCtx context.Context, userID user.ID) (*user.Info, error) {
+func (ur *UserReader) Get(dbCtx context.Context, userID user.ID, locking bool) (*user.Info, error) {
 	val, err := sql.ExtractDB(dbCtx)
 	if err != nil {
 		return nil, err
@@ -44,24 +45,33 @@ func (ur *UserReader) Get(dbCtx context.Context, userID user.ID) (*user.Info, er
 		UpdatedAt    time.Time
 	}
 
+	db := val.(*gorm.DB)
+	if locking {
+		db = db.
+			WithContext(dbCtx).
+			Clauses(clause.Locking{
+				Strength: clause.LockingStrengthUpdate,
+			})
+	}
+
 	var record Record
-	err = val.(*gorm.DB).
+	err = db.
 		WithContext(dbCtx).
 		Model(&model.User{}).
 		Select([]string{
-			"id",
-			"external_id",
-			"username",
-			"password_hash",
-			"phone_hash",
-			"phone_tail",
-			"state",
-			"COUNT(*) AS num_devices",
-			"created_at",
-			"updated_at",
+			"users.id",
+			"users.external_id",
+			"users.username",
+			"users.password_hash",
+			"users.phone_hash",
+			"users.phone_tail",
+			"users.state",
+			"COUNT(devices.id) AS num_devices",
+			"users.created_at",
+			"users.updated_at",
 		}).
-		Joins("INNER JOIN devices ON users.id = devices.user_id").
-		Where("id = ?", userID).
+		Joins("LEFT JOIN devices ON users.id = devices.user_id").
+		Where("users.id = ?", userID).
 		Group("users.id").
 		Take(&record).
 		Error

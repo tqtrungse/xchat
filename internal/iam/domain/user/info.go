@@ -7,6 +7,13 @@ package user
 
 import "time"
 
+const (
+	MaxUsernameLength  = 128
+	MaxPhoneHashLength = 16
+
+	maxDevices = 5
+)
+
 type Info struct {
 	ID           ID
 	ExternalID   string
@@ -18,4 +25,8 @@ type Info struct {
 	NumDevices   uint8
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+}
+
+func (i Info) ReachMaxDevices() bool {
+	return i.NumDevices >= maxDevices
 }

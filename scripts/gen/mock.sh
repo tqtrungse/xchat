@@ -7,6 +7,13 @@ ROOT_DIR="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 
 cd "$ROOT_DIR"
 
+### IAM
+
+mockgen \
+  -source=internal/iam/application/registerdevice/ports.go \
+  -destination=internal/iam/application/registerdevice/mocks/ports_mock.go \
+  -package=mocks
+
 ### Pkg
 
 mockgen \

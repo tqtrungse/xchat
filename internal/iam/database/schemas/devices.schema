@@ -17,7 +17,9 @@ create_table "devices",
     t.timestamp "deleted_at", limit: 3,  null: true
     t.datetime "seen_at",     limit: 3,  null: true
 
-    t.index ["user_id"], name: "index_devices_on_user"
+    t.index ["user_id"],      name: "index_devices_on_user"
+    t.index ["peer_pub"],     name: "unique_index_devices_on_peer_pub", unique: true
+    t.index ["identity_pub"], name: "unique_index_devices_on_identity_pub", unique: true
 
     t.foreign_key "users",
         column: ["user_id"],

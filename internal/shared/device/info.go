@@ -11,6 +11,8 @@ import (
 	"xchat/internal/iam/domain/user"
 )
 
+const MaxNameLength = 128
+
 type Info struct {
 	ID          ID
 	UserID      user.ID

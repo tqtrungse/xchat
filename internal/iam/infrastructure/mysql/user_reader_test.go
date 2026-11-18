@@ -34,9 +34,14 @@ func Test_UserReader_Get(t *testing.T) {
 		sqlMock sqlmock.Sqlmock
 	}
 
+	type Args struct {
+		userID  user.ID
+		locking bool
+	}
+
 	type testcase struct {
 		prepare  func(f *fields)
-		args     user.ID
+		args     Args
 		expected *user.Info
 		wantErr  bool
 	}
@@ -48,10 +53,10 @@ func Test_UserReader_Get(t *testing.T) {
 	_, _ = rand.Read(phoneHash)
 
 	selectQuery := strings.Join([]string{
-		"SELECT `id`,`external_id`,`username`,`password_hash`,`phone_hash`,`phone_tail`,`state`,COUNT(*) AS num_devices,`created_at`,`updated_at`",
+		"SELECT users.id,users.external_id,users.username,users.password_hash,users.phone_hash,users.phone_tail,users.state,COUNT(devices.id) AS num_devices,users.created_at,users.updated_at",
 		"FROM `users`",
-		"INNER JOIN devices ON users.id = devices.user_id",
-		"WHERE id = ?",
+		"LEFT JOIN devices ON users.id = devices.user_id",
+		"WHERE users.id = ?",
 		"GROUP BY `users`.`id`",
 		"LIMIT ?",
 	}, " ")
@@ -68,7 +73,7 @@ func Test_UserReader_Get(t *testing.T) {
 	query := fmt.Sprintf("^%s$", regexp.QuoteMeta(selectQuery))
 
 	testCases := map[string]testcase{
-		"Success (found)": {
+		"Success (found + without locking)": {
 			prepare: func(f *fields) {
 				f.sqlMock.
 					ExpectQuery(query).
@@ -89,7 +94,56 @@ func Test_UserReader_Get(t *testing.T) {
 						),
 					)
 			},
-			args: user.ID(11),
+			args: Args{
+				userID:  user.ID(11),
+				locking: false,
+			},
+			expected: &user.Info{
+				ID:           user.ID(11),
+				ExternalID:   "sms|123456789",
+				Username:     "username",
+				PasswordHash: passwordHash,
+				PhoneHash:    phoneHash,
+				PhoneTail:    32,
+				State:        user.StateActive,
+				NumDevices:   3,
+			},
+			wantErr: false,
+		},
+		"Success (found + with locking)": {
+			prepare: func(f *fields) {
+				f.sqlMock.
+					ExpectQuery(fmt.Sprintf("^%s$", regexp.QuoteMeta(
+						strings.Join([]string{
+							"SELECT users.id,users.external_id,users.username,users.password_hash,users.phone_hash,users.phone_tail,users.state,COUNT(devices.id) AS num_devices,users.created_at,users.updated_at",
+							"FROM `users`",
+							"LEFT JOIN devices ON users.id = devices.user_id",
+							"WHERE users.id = ?",
+							"GROUP BY `users`.`id`",
+							"LIMIT ? FOR UPDATE",
+						}, " "),
+					))).
+					WithArgs(
+						user.ID(11),
+						1,
+					).
+					WillReturnRows(
+						sqlmock.NewRows(columns).AddRow(
+							user.ID(11),
+							"sms|123456789",
+							"username",
+							passwordHash,
+							phoneHash,
+							uint16(32),
+							user.StateActive,
+							uint8(3),
+						),
+					)
+			},
+			args: Args{
+				userID:  user.ID(11),
+				locking: true,
+			},
 			expected: &user.Info{
 				ID:           user.ID(11),
 				ExternalID:   "sms|123456789",
@@ -112,7 +166,10 @@ func Test_UserReader_Get(t *testing.T) {
 					).
 					WillReturnRows(sqlmock.NewRows(columns))
 			},
-			args:     user.ID(11),
+			args: Args{
+				userID:  user.ID(11),
+				locking: false,
+			},
 			expected: nil,
 			wantErr:  false,
 		},
@@ -126,7 +183,10 @@ func Test_UserReader_Get(t *testing.T) {
 					).
 					WillReturnError(errors.New("expected error"))
 			},
-			args:     user.ID(11),
+			args: Args{
+				userID:  user.ID(11),
+				locking: false,
+			},
 			expected: nil,
 			wantErr:  true,
 		},
@@ -158,7 +218,7 @@ func Test_UserReader_Get(t *testing.T) {
 			)
 
 			err = db.WithDB(f.ctx, sql.TxSourceReplicas, func(dbCtx context.Context) error {
-				ret, err = reader.Get(dbCtx, tc.args)
+				ret, err = reader.Get(dbCtx, tc.args.userID, tc.args.locking)
 				return err
 			})
 			if (err != nil) != tc.wantErr {
