@@ -49,3 +49,11 @@ func (d *mysqlDialector) Initialize(db *gorm.DB) error {
 	}()
 	return d.Dialector.Initialize(db)
 }
+
+// Translate converts an error of the MySQL driver to ErrLockConflict or to a
+// DuplicateKeyError. GORM calls it for each error if gorm.Config.TranslateError
+// is true. It replaces the translation of the embedded dialector, which keeps
+// neither the name of the key nor the error of the driver.
+func (d *mysqlDialector) Translate(err error) error {
+	return translateMySQLError(err)
+}
