@@ -33,9 +33,10 @@ func (ur *UserReader) Get(dbCtx context.Context, userID user.ID) (*user.Info, er
 
 	type Record struct {
 		ID           user.ID
+		ExternalID   string
 		Username     string
-		PasswordHash string
-		PhoneHash    string
+		PasswordHash []byte
+		PhoneHash    []byte
 		PhoneTail    uint16
 		State        user.State
 		NumDevices   uint8
@@ -49,6 +50,7 @@ func (ur *UserReader) Get(dbCtx context.Context, userID user.ID) (*user.Info, er
 		Model(&model.User{}).
 		Select([]string{
 			"id",
+			"external_id",
 			"username",
 			"password_hash",
 			"phone_hash",
@@ -72,6 +74,7 @@ func (ur *UserReader) Get(dbCtx context.Context, userID user.ID) (*user.Info, er
 
 	return &user.Info{
 		ID:           record.ID,
+		ExternalID:   record.ExternalID,
 		Username:     record.Username,
 		PasswordHash: record.PasswordHash,
 		PhoneHash:    record.PhoneHash,

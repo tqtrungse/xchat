@@ -31,6 +31,7 @@ func (uw *UserWriter) Create(dbCtx context.Context, user user.Info) error {
 
 	userModel := &model.User{
 		ID:           user.ID,
+		ExternalID:   user.ExternalID,
 		Username:     user.Username,
 		PasswordHash: user.PasswordHash,
 		PhoneHash:    user.PhoneHash,

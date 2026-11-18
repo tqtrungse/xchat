@@ -5,4 +5,4 @@
 
 package user
 
-type ID string
+type ID uint64

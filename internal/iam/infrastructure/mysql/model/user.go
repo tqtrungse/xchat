@@ -13,9 +13,10 @@ import (
 
 type User struct {
 	ID           user.ID `gorm:"primaryKey;autoIncrement:false"`
+	ExternalID   string
 	Username     string
-	PasswordHash string
-	PhoneHash    string
+	PasswordHash []byte
+	PhoneHash    []byte
 	PhoneTail    uint16
 	State        user.State
 	CreatedAt    time.Time `gorm:"->"`

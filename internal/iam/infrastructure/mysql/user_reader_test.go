@@ -44,8 +44,11 @@ func Test_UserReader_Get(t *testing.T) {
 	passwordHash := make([]byte, 255)
 	_, _ = rand.Read(passwordHash)
 
+	phoneHash := make([]byte, 16)
+	_, _ = rand.Read(phoneHash)
+
 	selectQuery := strings.Join([]string{
-		"SELECT `id`,`username`,`password_hash`,`phone_hash`,`phone_tail`,`state`,COUNT(*) AS num_devices,`created_at`,`updated_at`",
+		"SELECT `id`,`external_id`,`username`,`password_hash`,`phone_hash`,`phone_tail`,`state`,COUNT(*) AS num_devices,`created_at`,`updated_at`",
 		"FROM `users`",
 		"INNER JOIN devices ON users.id = devices.user_id",
 		"WHERE id = ?",
@@ -54,6 +57,7 @@ func Test_UserReader_Get(t *testing.T) {
 	}, " ")
 	columns := []string{
 		"id",
+		"external_id",
 		"username",
 		"password_hash",
 		"phone_hash",
@@ -69,27 +73,29 @@ func Test_UserReader_Get(t *testing.T) {
 				f.sqlMock.
 					ExpectQuery(query).
 					WithArgs(
-						user.ID("123"),
+						user.ID(11),
 						1,
 					).
 					WillReturnRows(
 						sqlmock.NewRows(columns).AddRow(
-							user.ID("123"),
+							user.ID(11),
+							"sms|123456789",
 							"username",
-							string(passwordHash),
-							"xxxxxxx",
+							passwordHash,
+							phoneHash,
 							uint16(32),
 							user.StateActive,
 							uint8(3),
 						),
 					)
 			},
-			args: user.ID("123"),
+			args: user.ID(11),
 			expected: &user.Info{
-				ID:           user.ID("123"),
+				ID:           user.ID(11),
+				ExternalID:   "sms|123456789",
 				Username:     "username",
-				PasswordHash: string(passwordHash),
-				PhoneHash:    "xxxxxxx",
+				PasswordHash: passwordHash,
+				PhoneHash:    phoneHash,
 				PhoneTail:    32,
 				State:        user.StateActive,
 				NumDevices:   3,
@@ -101,12 +107,12 @@ func Test_UserReader_Get(t *testing.T) {
 				f.sqlMock.
 					ExpectQuery(query).
 					WithArgs(
-						user.ID("123"),
+						user.ID(11),
 						1,
 					).
 					WillReturnRows(sqlmock.NewRows(columns))
 			},
-			args:     user.ID("123"),
+			args:     user.ID(11),
 			expected: nil,
 			wantErr:  false,
 		},
@@ -115,12 +121,12 @@ func Test_UserReader_Get(t *testing.T) {
 				f.sqlMock.
 					ExpectQuery(query).
 					WithArgs(
-						user.ID("123"),
+						user.ID(11),
 						1,
 					).
 					WillReturnError(errors.New("expected error"))
 			},
-			args:     user.ID("123"),
+			args:     user.ID(11),
 			expected: nil,
 			wantErr:  true,
 		},
@@ -151,7 +157,7 @@ func Test_UserReader_Get(t *testing.T) {
 				reader = NewUserReader()
 			)
 
-			err = db.WithDB(f.ctx, sql.TxSourcePrimary, func(dbCtx context.Context) error {
+			err = db.WithDB(f.ctx, sql.TxSourceReplicas, func(dbCtx context.Context) error {
 				ret, err = reader.Get(dbCtx, tc.args)
 				return err
 			})

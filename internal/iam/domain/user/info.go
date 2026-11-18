@@ -9,9 +9,10 @@ import "time"
 
 type Info struct {
 	ID           ID
+	ExternalID   string
 	Username     string
-	PasswordHash string
-	PhoneHash    string
+	PasswordHash []byte
+	PhoneHash    []byte
 	PhoneTail    uint16
 	State        State
 	NumDevices   uint8
