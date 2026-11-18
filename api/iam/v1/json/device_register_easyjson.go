@@ -105,14 +105,16 @@ func easyjsonB972eda0DecodeXchatApiIamV1Json1(in *jlexer.Lexer, out *RegisterDev
 		case "password":
 			if in.IsNull() {
 				in.Skip()
+				out.Password = nil
 			} else {
-				out.Password = string(in.String())
+				out.Password = in.Bytes()
 			}
 		case "phone_hash":
 			if in.IsNull() {
 				in.Skip()
+				out.PhoneHash = nil
 			} else {
-				out.PhoneHash = string(in.String())
+				out.PhoneHash = in.Bytes()
 			}
 		case "phone_tail":
 			if in.IsNull() {
@@ -162,12 +164,12 @@ func easyjsonB972eda0EncodeXchatApiIamV1Json1(out *jwriter.Writer, in RegisterDe
 	{
 		const prefix string = ",\"password\":"
 		out.RawString(prefix)
-		out.String(string(in.Password))
+		out.Base64Bytes(in.Password)
 	}
 	{
 		const prefix string = ",\"phone_hash\":"
 		out.RawString(prefix)
-		out.String(string(in.PhoneHash))
+		out.Base64Bytes(in.PhoneHash)
 	}
 	{
 		const prefix string = ",\"phone_tail\":"

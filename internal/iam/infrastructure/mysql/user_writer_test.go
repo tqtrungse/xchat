@@ -41,7 +41,10 @@ func Test_UserWriter_Create(t *testing.T) {
 	passwordHash := make([]byte, 255)
 	_, _ = rand.Read(passwordHash)
 
-	insertQuery := "INSERT INTO `users` (`id`,`username`,`password_hash`,`phone_hash`,`phone_tail`,`state`) VALUES (?,?,?,?,?,?)"
+	phoneHash := make([]byte, 16)
+	_, _ = rand.Read(phoneHash)
+
+	insertQuery := "INSERT INTO `users` (`id`,`external_id`,`username`,`password_hash`,`phone_hash`,`phone_tail`,`state`) VALUES (?,?,?,?,?,?,?)"
 	query := fmt.Sprintf("^%s$", regexp.QuoteMeta(insertQuery))
 
 	testCases := map[string]testcase{
@@ -50,20 +53,22 @@ func Test_UserWriter_Create(t *testing.T) {
 				f.sqlMock.
 					ExpectExec(query).
 					WithArgs(
-						user.ID("123"),
+						user.ID(11),
+						"sms|123456789",
 						"username",
-						string(passwordHash),
-						"xxxxxxx",
+						passwordHash,
+						phoneHash,
 						uint16(123),
 						user.StateActive,
 					).
 					WillReturnResult(sqlmock.NewResult(123, 1))
 			},
 			args: user.Info{
-				ID:           user.ID("123"),
+				ID:           user.ID(11),
 				Username:     "username",
-				PasswordHash: string(passwordHash),
-				PhoneHash:    "xxxxxxx",
+				ExternalID:   "sms|123456789",
+				PasswordHash: passwordHash,
+				PhoneHash:    phoneHash,
 				PhoneTail:    123,
 				State:        user.StateActive,
 			},
@@ -74,20 +79,22 @@ func Test_UserWriter_Create(t *testing.T) {
 				f.sqlMock.
 					ExpectExec(query).
 					WithArgs(
-						user.ID("123"),
+						user.ID(11),
+						"sms|123456789",
 						"username",
-						string(passwordHash),
-						"xxxxxxx",
+						passwordHash,
+						phoneHash,
 						uint16(32),
 						user.StateActive,
 					).
 					WillReturnError(errors.New("expected error"))
 			},
 			args: user.Info{
-				ID:           user.ID("123"),
+				ID:           user.ID(11),
+				ExternalID:   "sms|123456789",
 				Username:     "username",
-				PasswordHash: string(passwordHash),
-				PhoneHash:    "xxxxxxx",
+				PasswordHash: passwordHash,
+				PhoneHash:    phoneHash,
 				PhoneTail:    32,
 				State:        user.StateActive,
 			},

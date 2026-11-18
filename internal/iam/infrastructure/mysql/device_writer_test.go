@@ -55,7 +55,7 @@ func Test_DeviceWriter_Create(t *testing.T) {
 					ExpectExec(query).
 					WithArgs(
 						device.ID(1),
-						user.ID("123"),
+						user.ID(11),
 						"iPhoneX-IOS10",
 						device.StateActive,
 						peerPub,
@@ -65,7 +65,7 @@ func Test_DeviceWriter_Create(t *testing.T) {
 			},
 			args: device.Info{
 				ID:          device.ID(1),
-				UserID:      user.ID("123"),
+				UserID:      user.ID(11),
 				Name:        "iPhoneX-IOS10",
 				State:       device.StateActive,
 				PeerPub:     peerPub,
@@ -79,7 +79,7 @@ func Test_DeviceWriter_Create(t *testing.T) {
 					ExpectExec(query).
 					WithArgs(
 						device.ID(1),
-						user.ID("123"),
+						user.ID(11),
 						"iPhoneX-IOS10",
 						device.StateActive,
 						peerPub,
@@ -89,7 +89,7 @@ func Test_DeviceWriter_Create(t *testing.T) {
 			},
 			args: device.Info{
 				ID:          device.ID(1),
-				UserID:      user.ID("123"),
+				UserID:      user.ID(11),
 				Name:        "iPhoneX-IOS10",
 				State:       device.StateActive,
 				PeerPub:     peerPub,
