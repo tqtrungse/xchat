@@ -15,7 +15,6 @@ import (
 	"strings"
 	"testing"
 
-	"xchat/api/iam/v1/json"
 	registermocks "xchat/internal/iam/application/registerdevice/mocks"
 	"xchat/internal/iam/domain/user"
 	"xchat/internal/shared/device"
@@ -43,7 +42,7 @@ func TestDeviceRegisterValidate(t *testing.T) {
 	for _, test := range []struct {
 		name       string
 		userID     user.ID
-		prepare    func(req *json.RegisterDeviceReq)
+		prepare    func(req *Request)
 		deriverErr error
 		wantErr    error
 	}{
@@ -59,7 +58,7 @@ func TestDeviceRegisterValidate(t *testing.T) {
 		{
 			name:   "empty username",
 			userID: 1,
-			prepare: func(req *json.RegisterDeviceReq) {
+			prepare: func(req *Request) {
 				req.Username = ""
 			},
 			wantErr: ErrRequestInvalid,
@@ -67,7 +66,7 @@ func TestDeviceRegisterValidate(t *testing.T) {
 		{
 			name:   "long password",
 			userID: 1,
-			prepare: func(req *json.RegisterDeviceReq) {
+			prepare: func(req *Request) {
 				req.Password = bytes.Repeat([]byte{'p'}, maxInputPasswordLength+1)
 			},
 			wantErr: ErrRequestInvalid,
@@ -75,7 +74,7 @@ func TestDeviceRegisterValidate(t *testing.T) {
 		{
 			name:   "long phone hash",
 			userID: 1,
-			prepare: func(req *json.RegisterDeviceReq) {
+			prepare: func(req *Request) {
 				req.PhoneHash = bytes.Repeat([]byte{'h'}, user.MaxPhoneHashLength+1)
 			},
 			wantErr: ErrRequestInvalid,
@@ -83,7 +82,7 @@ func TestDeviceRegisterValidate(t *testing.T) {
 		{
 			name:   "zero phone tail",
 			userID: 1,
-			prepare: func(req *json.RegisterDeviceReq) {
+			prepare: func(req *Request) {
 				req.PhoneTail = 0
 			},
 			wantErr: ErrRequestInvalid,
@@ -91,7 +90,7 @@ func TestDeviceRegisterValidate(t *testing.T) {
 		{
 			name:   "long device name",
 			userID: 1,
-			prepare: func(req *json.RegisterDeviceReq) {
+			prepare: func(req *Request) {
 				req.DeviceName = strings.Repeat("d", device.MaxNameLength+1)
 			},
 			wantErr: ErrRequestInvalid,
@@ -99,7 +98,7 @@ func TestDeviceRegisterValidate(t *testing.T) {
 		{
 			name:   "invalid identity public key",
 			userID: 1,
-			prepare: func(req *json.RegisterDeviceReq) {
+			prepare: func(req *Request) {
 				req.DeviceIdentityPub = nil
 			},
 			wantErr: ticket.ErrIdentityPubInvalid,
@@ -122,11 +121,11 @@ func TestDeviceRegisterValidate(t *testing.T) {
 
 			req := validRegisterRequest(publicKey)
 			if test.prepare != nil {
-				test.prepare(&req)
+				test.prepare(req)
 			}
 
-			register := DeviceRegister{keyDeriver: keyDeriver}
-			validationErr := register.validateInput(test.userID, &req)
+			register := Usecase{keyDeriver: keyDeriver}
+			validationErr := register.validateInput(test.userID, req)
 			if test.wantErr == nil {
 				require.NoError(t, validationErr)
 				return
@@ -136,8 +135,8 @@ func TestDeviceRegisterValidate(t *testing.T) {
 	}
 }
 
-func validRegisterRequest(publicKey ed25519.PublicKey) json.RegisterDeviceReq {
-	return json.RegisterDeviceReq{
+func validRegisterRequest(publicKey ed25519.PublicKey) *Request {
+	return &Request{
 		Username:          "username",
 		Password:          bytes.Repeat([]byte{'p'}, maxInputPasswordLength),
 		PhoneHash:         bytes.Repeat([]byte{'h'}, user.MaxPhoneHashLength),
@@ -192,14 +191,14 @@ func TestDeviceRegisterValidateUserPassword(t *testing.T) {
 				Verify(gomock.Any(), gomock.Any(), storedUser.PasswordHash).
 				Return(test.verifyErr)
 
-			register := DeviceRegister{
+			register := Usecase{
 				logger:         logger,
 				passwordHasher: passwordHasher,
 			}
 			req := validRegisterRequest(nil)
 			req.PhoneHash = storedUser.PhoneHash
 
-			err := register.verifyCredentials(context.Background(), &storedUser, &req)
+			err := register.verifyCredentials(context.Background(), &storedUser, req)
 			if test.wantErr == nil {
 				require.NoError(t, err)
 				return
@@ -257,14 +256,14 @@ func TestDeviceRegisterCreateUser(t *testing.T) {
 	f := newRegisterFixture(t, nil, nil)
 	req := validRegisterRequest(nil)
 
-	require.NoError(t, f.register.createUser(context.Background(), 7, []byte("hash"), &req))
+	require.NoError(t, f.register.createUser(context.Background(), 7, []byte("hash"), req))
 	require.Len(t, f.users, 1)
 	require.Equal(t, user.ID(7), f.users[0].ID)
 	require.Equal(t, []byte("hash"), f.users[0].PasswordHash)
 }
 
 type registerFixture struct {
-	register       DeviceRegister
+	register       *Usecase
 	userReader     *registermocks.MockUserReader
 	userWriter     *registermocks.MockUserWriter
 	deviceWriter   *registermocks.MockDeviceWriter
@@ -276,7 +275,7 @@ type registerFixture struct {
 	devices []device.Info
 }
 
-// newRegisterFixture makes a DeviceRegister with mocks. The transaction and
+// newRegisterFixture makes a Usecase with mocks. The transaction and
 // WithDB mocks run the callback immediately. The fixture records each user and
 // device that the use case writes.
 func newRegisterFixture(t *testing.T, userWriterErr, deviceWriterErr error) *registerFixture {

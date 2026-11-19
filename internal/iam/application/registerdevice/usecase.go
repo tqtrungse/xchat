@@ -11,7 +11,6 @@ import (
 	"crypto/subtle"
 	"errors"
 
-	"xchat/api/iam/v1/json"
 	"xchat/internal/iam/domain/user"
 	"xchat/internal/shared/device"
 	"xchat/internal/shared/password"
@@ -27,10 +26,10 @@ import (
 
 const maxInputPasswordLength = 32
 
-// DeviceRegister registers a device for a user. It creates the user if the user
+// Usecase registers a device for a user. It creates the user if the user
 // does not exist. For an existing user, it checks the credentials, the state,
 // and the number of devices before it adds the device.
-type DeviceRegister struct {
+type Usecase struct {
 	db             sql.DB
 	logger         *log.Logger
 	intGenerator   generator.Integer
@@ -41,7 +40,7 @@ type DeviceRegister struct {
 	deviceWriter   DeviceWriter
 }
 
-// New creates a DeviceRegister. All arguments are required.
+// New creates a Usecase. All arguments are required.
 func New(
 	db sql.DB,
 	log *log.Logger,
@@ -51,8 +50,8 @@ func New(
 	userReader UserReader,
 	userWriter UserWriter,
 	deviceWriter DeviceWriter,
-) DeviceRegister {
-	return DeviceRegister{
+) *Usecase {
+	return &Usecase{
 		db:             db,
 		logger:         log,
 		intGenerator:   intGenerator,
@@ -72,19 +71,19 @@ func New(
 // valid. It returns ErrUserLocked, ErrUserReachMaxDevices, ErrUserExists, or
 // ErrDeviceExists if the data does not permit the request. It returns ErrBusy
 // if a new try can succeed. It returns ErrInternal for any other failure.
-func (p *DeviceRegister) Register(
+func (u *Usecase) Register(
 	ctx context.Context,
 	userID user.ID,
-	req json.RegisterDeviceReq,
-) (*json.RegisterDeviceResp, error) {
-	err := p.validateInput(userID, &req)
+	req *Request,
+) (*Response, error) {
+	err := u.validateInput(userID, req)
 	if err != nil {
 		return nil, err
 	}
 
-	id, err := p.intGenerator.Next()
+	id, err := u.intGenerator.Next()
 	if err != nil || id == 0 {
-		p.logger.Error("failed to generate ID", zap.Error(err))
+		u.logger.Error("failed to generate ID", zap.Error(err))
 		return nil, ErrInternal
 	}
 
@@ -93,49 +92,49 @@ func (p *DeviceRegister) Register(
 		passwordHash []byte
 	)
 
-	err = p.db.WithDB(ctx, sql.TxSourcePrimary, func(dbCtx context.Context) error {
-		storedUser, err = p.userReader.Get(dbCtx, userID, false)
+	err = u.db.WithDB(ctx, sql.TxSourcePrimary, func(dbCtx context.Context) error {
+		storedUser, err = u.userReader.Get(dbCtx, userID, false)
 		return err
 	})
 	if err != nil {
-		return nil, p.mapReadError(err)
+		return nil, u.mapReadError(err)
 	}
 
 	if storedUser == nil {
-		passwordHash, err = p.passwordHasher.Hash(ctx, req.Password)
+		passwordHash, err = u.passwordHasher.Hash(ctx, req.Password)
 	} else {
-		err = p.verifyCredentials(ctx, storedUser, &req)
+		err = u.verifyCredentials(ctx, storedUser, req)
 	}
 	if err != nil {
-		return nil, p.mapPasswordError(err)
+		return nil, u.mapPasswordError(err)
 	}
 
-	err = p.db.Transaction(ctx, sql.TxSourcePrimary, func(dbCtx context.Context) error {
+	err = u.db.Transaction(ctx, sql.TxSourcePrimary, func(dbCtx context.Context) error {
 		if storedUser == nil {
-			err = p.createUser(dbCtx, userID, passwordHash, &req)
+			err = u.createUser(dbCtx, userID, passwordHash, req)
 		} else {
-			err = p.lockAndCheck(dbCtx, userID, storedUser)
+			err = u.lockAndCheck(dbCtx, userID, storedUser)
 		}
 		if err != nil {
 			return err
 		}
-		return p.createDevice(dbCtx, userID, device.ID(id), &req)
+		return u.createDevice(dbCtx, userID, device.ID(id), req)
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &json.RegisterDeviceResp{
+	return &Response{
 		DeviceID: device.ID(id).String(),
 	}, err
 }
 
-func (p *DeviceRegister) createUser(
+func (u *Usecase) createUser(
 	dbCtx context.Context,
 	userID user.ID,
 	passwordHash []byte,
-	req *json.RegisterDeviceReq,
+	req *Request,
 ) error {
-	err := p.userWriter.Create(dbCtx, user.Info{
+	err := u.userWriter.Create(dbCtx, user.Info{
 		ID:           userID,
 		Username:     req.Username,
 		PasswordHash: passwordHash,
@@ -159,17 +158,17 @@ func (p *DeviceRegister) createUser(
 	if errors.Is(err, user.ErrUniqueConflict) {
 		return ErrUserExists
 	}
-	p.logger.Error("failed to register user", zap.Error(err))
+	u.logger.Error("failed to register user", zap.Error(err))
 	return ErrInternal
 }
 
-func (p *DeviceRegister) createDevice(
+func (u *Usecase) createDevice(
 	dbCtx context.Context,
 	userID user.ID,
 	deviceID device.ID,
-	req *json.RegisterDeviceReq,
+	req *Request,
 ) error {
-	err := p.deviceWriter.Create(dbCtx, device.Info{
+	err := u.deviceWriter.Create(dbCtx, device.Info{
 		ID:          deviceID,
 		UserID:      userID,
 		Name:        req.DeviceName,
@@ -188,25 +187,25 @@ func (p *DeviceRegister) createDevice(
 	if errors.Is(err, device.ErrAlreadyExists) {
 		return ErrDeviceExists
 	}
-	p.logger.Error("failed to register device", zap.Error(err))
+	u.logger.Error("failed to register device", zap.Error(err))
 	return ErrInternal
 }
 
-func (p *DeviceRegister) verifyCredentials(
+func (u *Usecase) verifyCredentials(
 	ctx context.Context,
 	storedUser *user.Info,
-	req *json.RegisterDeviceReq,
+	req *Request,
 ) error {
 	// The password check always runs, even if the username or the phone is
 	// wrong. Therefore, the response time does not show the cause.
-	verifyErr := p.passwordHasher.Verify(ctx, req.Password, storedUser.PasswordHash)
+	verifyErr := u.passwordHasher.Verify(ctx, req.Password, storedUser.PasswordHash)
 
 	identityOK := subtle.ConstantTimeCompare(bs.StringToBytes(req.Username), bs.StringToBytes(storedUser.Username)) == 1 &&
 		subtle.ConstantTimeCompare(req.PhoneHash, storedUser.PhoneHash) == 1 &&
 		req.PhoneTail == storedUser.PhoneTail
 
 	if verifyErr != nil {
-		return p.mapPasswordError(verifyErr)
+		return u.mapPasswordError(verifyErr)
 	}
 	if !identityOK {
 		return ErrRequestInvalid
@@ -214,14 +213,14 @@ func (p *DeviceRegister) verifyCredentials(
 	return nil
 }
 
-func (p *DeviceRegister) lockAndCheck(
+func (u *Usecase) lockAndCheck(
 	dbCtx context.Context,
 	userID user.ID,
 	verified *user.Info,
 ) error {
-	locked, err := p.userReader.Get(dbCtx, userID, true)
+	locked, err := u.userReader.Get(dbCtx, userID, true)
 	if err != nil {
-		return p.mapReadError(err)
+		return u.mapReadError(err)
 	}
 	if locked == nil {
 		return ErrBusy
@@ -247,11 +246,11 @@ func (p *DeviceRegister) lockAndCheck(
 // mapReadError converts an error of the user reader to an error of this use
 // case. A lock conflict is temporary. The client can try again. Any other error
 // is a server error. mapReadError logs it and hides the cause from the client.
-func (p *DeviceRegister) mapReadError(err error) error {
+func (u *Usecase) mapReadError(err error) error {
 	if sql.IsLockConflict(err) {
 		return ErrBusy
 	}
-	p.logger.Error("failed to read user", zap.Error(err))
+	u.logger.Error("failed to read user", zap.Error(err))
 	return ErrInternal
 }
 
@@ -259,19 +258,22 @@ func (p *DeviceRegister) mapReadError(err error) error {
 // this use case. A wrong password is a client error. A busy hasher is a
 // temporary error. The client can try again. Any other error is a server
 // error. mapPasswordError logs it and hides the cause from the client.
-func (p *DeviceRegister) mapPasswordError(err error) error {
+func (u *Usecase) mapPasswordError(err error) error {
 	switch {
 	case errors.Is(err, password.ErrMismatch):
 		return ErrRequestInvalid
 	case errors.Is(err, password.ErrBusy):
 		return ErrBusy
 	default:
-		p.logger.Error("failed to hash or verify password", zap.Error(err))
+		u.logger.Error("failed to hash or verify password", zap.Error(err))
 		return ErrInternal
 	}
 }
 
-func (p *DeviceRegister) validateInput(userID user.ID, req *json.RegisterDeviceReq) error {
+func (u *Usecase) validateInput(userID user.ID, req *Request) error {
+	if req == nil {
+		return ErrRequestInvalid
+	}
 	if userID == 0 ||
 		!isValidLength(req.Username, user.MaxUsernameLength) ||
 		!isValidLength(req.Password, maxInputPasswordLength) ||
@@ -286,7 +288,7 @@ func (p *DeviceRegister) validateInput(userID user.ID, req *json.RegisterDeviceR
 		return err
 	}
 
-	return p.keyDeriver.ValidatePeerPub(req.DevicePeerPub)
+	return u.keyDeriver.ValidatePeerPub(req.DevicePeerPub)
 }
 
 // isValidLength reports whether value has a length in [1, limit].

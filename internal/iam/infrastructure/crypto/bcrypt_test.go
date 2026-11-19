@@ -133,7 +133,7 @@ func TestNewBcryptDefaultLimit(t *testing.T) {
 
 	for _, limit := range []int{0, -1} {
 		hasher := NewBcrypt(limit)
-		require.Equal(t, max(1, runtime.GOMAXPROCS(0)/2), cap(hasher.slots))
+		require.Equal(t, max(1, runtime.GOMAXPROCS(0)*3/4), cap(hasher.slots))
 	}
 
 	hasher := NewBcrypt(3)

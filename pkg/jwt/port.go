@@ -9,7 +9,8 @@ import "github.com/golang-jwt/jwt/v5"
 
 type Claims struct {
 	jwt.RegisteredClaims
-	Scope string `json:"scope"`
+	Scope  string `json:"scope"`
+	UserID string `json:"user_id"`
 }
 
 type Auth interface {

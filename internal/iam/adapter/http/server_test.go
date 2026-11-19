@@ -24,7 +24,9 @@ import (
 	"testing"
 	"time"
 
+	"xchat/internal/iam/adapter/http/httpx"
 	"xchat/internal/iam/core/rejection"
+
 	"xchat/pkg/jwt"
 	"xchat/pkg/jwt/mocks"
 	"xchat/pkg/log"
@@ -242,7 +244,7 @@ func TestAuthenticate(t *testing.T) {
 			var handlerClaims *jwt.Claims
 			server.APIGroup().GET("/ping", func(c *gin.Context) {
 				handlerCalled = true
-				claims, exists := ClaimsFromContext(c)
+				claims, exists := httpx.ClaimsFromContext(c)
 				require.True(t, exists)
 				handlerClaims = claims
 				c.Status(nethttp.StatusNoContent)
@@ -578,4 +580,54 @@ func newTestServer(t *testing.T, auth jwt.Auth) *Server {
 	server, err := buildServer(testServerConfig(), auth, logger, rejections)
 	require.NoError(t, err)
 	return server
+}
+
+// stubMounter is a Mounter that mounts one route and counts its calls.
+type stubMounter struct {
+	mounts int
+	group  *gin.RouterGroup
+}
+
+func (m *stubMounter) Mount(group *gin.RouterGroup) {
+	m.mounts++
+	m.group = group
+	group.GET("/stub", func(c *gin.Context) {
+		claims, ok := httpx.ClaimsFromContext(c)
+		if !ok || claims == nil {
+			c.Status(nethttp.StatusInternalServerError)
+			return
+		}
+		c.String(nethttp.StatusOK, claims.UserID)
+	})
+}
+
+func TestNewServerRejectsNilRoute(t *testing.T) {
+	logger, rejections := newTestDeps(t)
+	_, err := NewServer(context.Background(), testServerConfig(), logger, rejections, &stubMounter{}, nil)
+	require.ErrorIs(t, err, errRouteNil)
+}
+
+func TestServerMountsRoutesBehindAuthentication(t *testing.T) {
+	auth := newMockAuth(t)
+	auth.EXPECT().Verify("good-token").Return(&jwt.Claims{UserID: "42"}, nil)
+
+	logger, rejections := newTestDeps(t)
+	route := &stubMounter{}
+	server, err := buildServer(testServerConfig(), auth, logger, rejections, route)
+	require.NoError(t, err)
+	require.Equal(t, 1, route.mounts, "the server must mount each route one time")
+	require.Same(t, server.APIGroup(), route.group)
+
+	// Without a token, the authentication middleware answers.
+	recorder := httptest.NewRecorder()
+	server.engine.ServeHTTP(recorder, httptest.NewRequest(nethttp.MethodGet, "/api/stub", nil))
+	require.Equal(t, nethttp.StatusUnauthorized, recorder.Code)
+
+	// With a token, the route runs and sees the claims.
+	request := httptest.NewRequest(nethttp.MethodGet, "/api/stub", nil)
+	request.Header.Set("Authorization", "Bearer good-token")
+	recorder = httptest.NewRecorder()
+	server.engine.ServeHTTP(recorder, request)
+	require.Equal(t, nethttp.StatusOK, recorder.Code)
+	require.Equal(t, "42", recorder.Body.String())
 }

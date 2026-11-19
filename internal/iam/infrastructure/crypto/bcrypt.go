@@ -34,10 +34,11 @@ type Bcrypt struct {
 
 // NewBcrypt creates a Bcrypt hasher. The argument limit is the maximum number
 // of bcrypt operations that run at the same time. If limit is zero or less,
-// NewBcrypt uses max(1, runtime.GOMAXPROCS(0)/2).
+// NewBcrypt uses max(1, runtime.GOMAXPROCS(0)*3/4). The rest of the cores
+// stay free for the other work of the process.
 func NewBcrypt(limit int) Bcrypt {
 	if limit <= 0 {
-		limit = max(1, runtime.GOMAXPROCS(0)/2)
+		limit = max(1, runtime.GOMAXPROCS(0)*3/4)
 	}
 	return Bcrypt{
 		slots: make(chan struct{}, limit),
