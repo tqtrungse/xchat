@@ -60,11 +60,26 @@ func Run(ctx, abort context.Context, env config.Env) (retErr error) {
 		rejection.Names(),
 	)
 
+	routes, closeDB, err := buildRoutes(ctx, loader, logger, rejections)
+	if err != nil {
+		return err
+	}
+	// The deferred calls run in the reverse order. The database closes after the
+	// server stops, and the logger closes last, so that the close of the database
+	// can still write to it.
+	defer func() {
+		closeErr := closeDB()
+		if closeErr != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("failed to close database: %w", closeErr))
+		}
+	}()
+
 	server, err := iamhttp.NewServer(
 		ctx,
 		httpConfig,
 		logger,
 		rejections,
+		routes...,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to initialize IAM HTTP server: %w", err)

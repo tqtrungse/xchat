@@ -47,6 +47,15 @@ const (
 	mysqlErrOptionPreventsStatement = 1290 // ER_OPTION_PREVENTS_STATEMENT. The server or the role is read-only.
 )
 
+// These codes show lock contention or a duplicate value. They are not failures
+// of the server. The caller must handle them with a transaction retry, a
+// recovery, or a client error.
+const (
+	mysqlErrLockWaitTimeout = 1205 // ER_LOCK_WAIT_TIMEOUT
+	mysqlErrDeadlock        = 1213 // ER_LOCK_DEADLOCK
+	mysqlErrDuplicateEntry  = 1062 // ER_DUP_ENTRY
+)
+
 // IsMySQLInfraError reports whether err is a known failure of the MySQL
 // server, the network, the connection, or the topology. Use the result as a
 // health signal for the circuit breaker.
@@ -221,6 +230,10 @@ func (m *mysql) Open(ctx context.Context, config Config) (func() error, error) {
 	db, err := gorm.Open(
 		primaryDialector,
 		&gorm.Config{
+			// The dialector of this package translates the errors of the
+			// driver to ErrLockConflict and DuplicateKeyError. GORM calls the
+			// translator only if this field is true.
+			TranslateError: true,
 			// GORM wraps each single Create, Update and Delete in a
 			// transaction of its own. InnoDB already makes one statement
 			// atomic, and a caller that needs several statements to be atomic
