@@ -11,7 +11,9 @@ import (
 	"net/http"
 	"strings"
 
+	"xchat/internal/iam/adapter/http/httpx"
 	"xchat/internal/iam/core/rejection"
+
 	"xchat/pkg/jwt"
 
 	"github.com/gin-gonic/gin"
@@ -26,7 +28,7 @@ func (s *Server) authenticate(c *gin.Context) {
 		s.rejections.Record(rejection.AuthHeader, errAuthHeaderNotFound)
 		// RFC 6750 section 3: do not send the error attribute when the
 		// request has no credentials.
-		c.Header("WWW-Authenticate", fmt.Sprintf(`Bearer realm=%q`, bearerRealm))
+		c.Header("WWW-Authenticate", fmt.Sprintf(`Bearer realm=%q`, httpx.BearerRealm))
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 			"error":             "invalid_request",
 			"error_description": errAuthHeaderNotFound.Error(),
@@ -39,7 +41,7 @@ func (s *Server) authenticate(c *gin.Context) {
 	if !found || !strings.EqualFold(scheme, "Bearer") || token == "" {
 		_ = c.Error(errAuthHeaderNotFound)
 		s.rejections.Record(rejection.AuthHeader, errAuthHeaderNotFound)
-		respondAuthError(c, http.StatusUnauthorized, "invalid_request", errAuthHeaderNotFound.Error())
+		httpx.RespondAuthError(c, http.StatusUnauthorized, "invalid_request", errAuthHeaderNotFound.Error())
 		return
 	}
 
@@ -54,27 +56,11 @@ func (s *Server) authenticate(c *gin.Context) {
 			return
 		}
 		s.rejections.Record(rejection.AuthToken, err)
-		respondAuthError(c, http.StatusUnauthorized, "invalid_token", errAuthVerify.Error())
+		httpx.RespondInvalidToken(c)
 		return
 	}
 
 	// Attach claims to the context.
-	c.Set(claimsContextKey, claims)
+	httpx.SetClaims(c, claims)
 	c.Next()
-}
-
-// respondAuthError writes an authentication error. The WWW-Authenticate
-// header contains the error code and the error description. The description
-// must be a constant, because it goes into the header.
-func respondAuthError(c *gin.Context, status int, code string, description string) {
-	c.Header("WWW-Authenticate", fmt.Sprintf(
-		`Bearer realm=%q, error=%q, error_description=%q`,
-		bearerRealm,
-		code,
-		description,
-	))
-	c.AbortWithStatusJSON(status, gin.H{
-		"error":             code,
-		"error_description": description,
-	})
 }

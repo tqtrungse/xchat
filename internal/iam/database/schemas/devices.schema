@@ -1,31 +1,30 @@
-create_table "devices",
-    options: "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
-    collation: "utf8mb4_0900_as_ci",
-    force: :cascade,
-    id: :bigint, unsigned: true, auto_increment: false do |t| # "id" is a Snowflake ID, not auto increment.
+create_table   :devices,
+    options:   'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
+    collation: 'utf8mb4_0900_as_ci',
+    force:     :cascade,
+    id:        { type: :bigint, unsigned: true, auto_increment: false } do |t|
 
-    t.bigint "user_id", unsigned: true,   null: false
+    t.bigint  :user_id,       unsigned: true, null: false
+    t.string  :name,          limit: 128,     null: false             # Device type + OS name
+    t.integer :state,                         null: false, default: 1 # 1: active, 2: locked
+    t.binary  :peer_pub,      limit: 32,      null: false             # x25519
+    t.binary  :identity_pub,  limit: 32,      null: false             # ed25519.GenerateKey(rand.Reader)
 
-    t.string "name",          limit: 128, null: false # Device type + OS name
-    t.integer "state",                    null: false, default: 1 # 1: active, 2: locked
+    t.datetime :created_at, precision: 3,  null: false
+    t.datetime :updated_at, precision: 3,  null: false
+    t.datetime :deleted_at, precision: 3
+    t.datetime "seen_at",   precision: 3,  null: true
 
-    t.binary "peer_pub",      limit: 32, null: false # x25519
-    t.binary "identity_pub",  limit: 32, null: false # ed25519.GenerateKey(rand.Reader)
+    t.index ['user_id'],      name: 'index_devices_on_user'
+    t.index ['peer_pub'],     name: 'unique_index_devices_on_peer_pub', unique: true
+    t.index ['identity_pub'], name: 'unique_index_devices_on_identity_pub', unique: true
+    t.index ['deleted_at'],   name: 'index_devices_on_deleted_at'
 
-    t.datetime "created_at",  limit: 3,  null: false
-    t.datetime "updated_at",  limit: 3,  null: false
-    t.timestamp "deleted_at", limit: 3,  null: true
-    t.datetime "seen_at",     limit: 3,  null: true
-
-    t.index ["user_id"],      name: "index_devices_on_user"
-    t.index ["peer_pub"],     name: "unique_index_devices_on_peer_pub", unique: true
-    t.index ["identity_pub"], name: "unique_index_devices_on_identity_pub", unique: true
-
-    t.foreign_key "users",
-        column: ["user_id"],
-        primary_key: ["id"],
-        name: "fk_devices_users"
+    t.foreign_key    :users,
+        column:      :user_id,
+        primary_key: :id,
+        name:        'fk_devices_users'
 end
 
-execute "ALTER TABLE devices MODIFY created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3) NOT NULL;"
-execute "ALTER TABLE devices MODIFY updated_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) NOT NULL;"
+execute 'ALTER TABLE devices MODIFY created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3) NOT NULL;'
+execute 'ALTER TABLE devices MODIFY updated_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) NOT NULL;'

@@ -9,8 +9,8 @@ import "errors"
 
 var (
 	errAuthHeaderNotFound = errors.New("missing or invalid Authorization header")
-	errAuthVerify         = errors.New("failed to verify token")
 	errAuthUnavailable    = errors.New("token verification is unavailable")
 	errRejectionsRequired = errors.New("rejection stats are required")
 	errLoggerRequired     = errors.New("logger is required")
+	errRouteNil           = errors.New("route is nil")
 )

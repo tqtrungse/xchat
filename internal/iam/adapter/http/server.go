@@ -26,24 +26,16 @@ import (
 	"go.uber.org/zap"
 )
 
-type contextKey uint8
-
 const (
-	claimsContextKey contextKey = iota
-	bearerRealm                 = "iam"
-	healthzPath                 = "/healthz"
-	readyzPath                  = "/readyz"
+	healthzPath = "/healthz"
+	readyzPath  = "/readyz"
 )
 
-// ClaimsFromContext gives the claims that authenticate attached to the
-// request. The second result is false if authenticate did not run.
-func ClaimsFromContext(c *gin.Context) (*jwt.Claims, bool) {
-	value, exists := c.Get(claimsContextKey)
-	if !exists {
-		return nil, false
-	}
-	claims, exists := value.(*jwt.Claims)
-	return claims, exists
+// Mounter registers the routes of one group of API on a router group. A handler
+// implements it. The server calls Mount one time with the authenticated group
+// that has the /api prefix.
+type Mounter interface {
+	Mount(group *gin.RouterGroup)
 }
 
 // Server serves the IAM HTTP API over HTTPS with a gin router.
@@ -51,6 +43,7 @@ type Server struct {
 	engine     *gin.Engine
 	httpServer *http.Server
 	auth       jwt.Auth
+	logger     *log.Logger
 	rejections *reject.Stats[rejection.Reason]
 	public     *gin.RouterGroup
 	api        *gin.RouterGroup
@@ -58,14 +51,16 @@ type Server struct {
 	keyFile    string
 }
 
-// NewServer makes a Server from config. NewServer returns an error if a
-// required field is empty, if the logger is nil, if the rejection stats are
+// NewServer makes a Server from config and mounts each route on the
+// authenticated /api group. NewServer returns an error if a required field is
+// empty, if the logger is nil, if the rejection stats are nil, if a route is
 // nil, or if the OIDC provider settings are not valid.
 func NewServer(
 	ctx context.Context,
 	config Config,
 	logger *log.Logger,
 	rejections *reject.Stats[rejection.Reason],
+	routes ...Mounter,
 ) (*Server, error) {
 	err := config.validate()
 	if err != nil {
@@ -76,6 +71,11 @@ func NewServer(
 	}
 	if rejections == nil {
 		return nil, errRejectionsRequired
+	}
+	for _, route := range routes {
+		if route == nil {
+			return nil, errRouteNil
+		}
 	}
 
 	auth, err := jwt.NewAuth(
@@ -91,17 +91,24 @@ func NewServer(
 		return nil, err
 	}
 
-	return buildServer(config, auth, logger, rejections)
+	return buildServer(
+		config,
+		auth,
+		logger,
+		rejections,
+		routes...,
+	)
 }
 
 // buildServer makes a Server with a valid config. buildServer puts the
-// default value in each timeout that is zero. The logger and the rejection
-// stats must not be nil.
+// default value in each timeout that is zero. The logger, the rejection stats,
+// and each route must not be nil.
 func buildServer(
 	config Config,
 	auth jwt.Auth,
 	logger *log.Logger,
 	rejections *reject.Stats[rejection.Reason],
+	routes ...Mounter,
 ) (*Server, error) {
 	config.applyDefault()
 
@@ -114,6 +121,7 @@ func buildServer(
 	s := &Server{
 		engine:     gin.New(),
 		auth:       auth,
+		logger:     logger,
 		rejections: rejections,
 		certFile:   config.CertFile,
 		keyFile:    config.KeyFile,
@@ -126,10 +134,10 @@ func buildServer(
 		return nil, fmt.Errorf("set trusted proxies: %w", err)
 	}
 
-	s.engine.Use(recoverPanic(logger))
+	s.engine.Use(s.recoverPanic())
 	// A probe runs every few seconds on each pod. An access log entry for each
 	// probe hides the real requests and fills the log queue.
-	s.engine.Use(requestLogger(logger, collection.NewSet[string](healthzPath, readyzPath)))
+	s.engine.Use(s.requestLogger(collection.NewSet[string](healthzPath, readyzPath)))
 	s.engine.Use(func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
 		c.Next()
@@ -149,6 +157,9 @@ func buildServer(
 	})
 	s.api = s.engine.Group("/api")
 	s.api.Use(s.authenticate)
+	for _, route := range routes {
+		route.Mount(s.api)
+	}
 
 	s.httpServer = &http.Server{
 		Addr:              config.Addr,
@@ -209,7 +220,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 // request whose route is in skipRoutes. The route is the gin route pattern,
 // not the request path. The entry does not contain the query string or an
 // authorization header.
-func requestLogger(logger *log.Logger, skipRoutes collection.Set[string]) gin.HandlerFunc {
+func (s *Server) requestLogger(skipRoutes collection.Set[string]) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		c.Next()
@@ -217,7 +228,7 @@ func requestLogger(logger *log.Logger, skipRoutes collection.Set[string]) gin.Ha
 		if skipRoutes.Contains(c.FullPath()) {
 			return
 		}
-		logger.Info(
+		s.logger.Info(
 			"http request",
 			zap.String("method", c.Request.Method),
 			zap.String("route", c.FullPath()),
@@ -231,9 +242,9 @@ func requestLogger(logger *log.Logger, skipRoutes collection.Set[string]) gin.Ha
 
 // recoverPanic logs each panic and returns a 500 response. The logger receives
 // the stack, not stderr.
-func recoverPanic(logger *log.Logger) gin.HandlerFunc {
+func (s *Server) recoverPanic() gin.HandlerFunc {
 	return gin.CustomRecoveryWithWriter(io.Discard, func(c *gin.Context, recovered any) {
-		logger.Error(
+		s.logger.Error(
 			"panic",
 			zap.Any("panic", recovered),
 			zap.ByteString("stack", debug.Stack()),

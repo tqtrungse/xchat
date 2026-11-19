@@ -21,15 +21,15 @@ of a user. The verification occurs on the device:
 IAM stores only a truncated HMAC of the phone number and the last three
 digits. The full phone number stays in Auth0.
 
-### `userID` claim
+### `user_id` claim
 
-An Auth0 Action runs when Auth0 creates a user. The Action adds the `userID`
+An Auth0 Action runs when Auth0 creates a user. The Action adds the `user_id`
 claim to the tokens of the user. The value is the Snowflake ID that IAM uses as
 the primary key of the user.
 
-| Claim    | Value                    |
-| -------- | ------------------------ |
-| `userID` | Snowflake ID of the user |
+| Claim     | Value                    |
+| --------- | ------------------------ |
+| `user_id` | Snowflake ID of the user |
 
 The Snowflake ID is a 64-bit integer. Use a string for the claim value. A JSON
 number can lose precision above 2^53 in a JavaScript client.

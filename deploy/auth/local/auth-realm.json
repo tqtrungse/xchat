@@ -1,6 +1,10 @@
 {
   "realm": "iam-local",
   "enabled": true,
+  "accessTokenLifespan": 3000,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
   "clients": [
     {
       "clientId": "iam-test",
@@ -22,6 +26,20 @@
             "id.token.claim": "false",
             "access.token.claim": "true"
           }
+        },
+        {
+          "name": "user_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "user_id",
+            "claim.name": "user_id",
+            "jsonType.label": "String",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
         }
       ]
     }
@@ -35,6 +53,11 @@
       "lastName": "Test",
       "enabled": true,
       "emailVerified": true,
+      "attributes": {
+        "user_id": [
+          "123456789012345678"
+        ]
+      },
       "credentials": [
         {
           "type": "password",
