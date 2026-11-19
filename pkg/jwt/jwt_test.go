@@ -21,11 +21,11 @@ import (
 	"testing"
 	"time"
 
-	jwtlib "github.com/golang-jwt/jwt/v5"
-	"github.com/stretchr/testify/require"
-
 	"xchat/pkg/log"
 	"xchat/pkg/log/logtest"
+
+	jwtlib "github.com/golang-jwt/jwt/v5"
+	"github.com/stretchr/testify/require"
 )
 
 const (

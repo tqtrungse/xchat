@@ -1,0 +1,27 @@
+version: '3'
+
+includes:
+  iam:
+    taskfile: ./services/iam/Taskfile.yaml
+
+  pkg:
+    taskfile: ./pkg/Taskfile.yaml
+
+  shared:
+    taskfile: ./services/internal/shared/Taskfile.yaml
+
+tasks:
+  default:
+    cmds:
+      - task --list
+    silent: true
+
+  infra:up:
+    desc: Start the local infrastructure
+    cmds:
+      - bash scripts/local/infra.sh up -d
+
+  infra:down:
+    desc: Stop the local infrastructure
+    cmds:
+      - bash scripts/local/infra.sh down

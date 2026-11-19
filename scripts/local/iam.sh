@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
 
 # Runs IAM locally. With -env=local, IAM reads cmd/iam/.local.env from the
-# repository root, and an environment variable overrides a value of that file.
+# directory of the service (services/iam), and an environment variable
+# overrides a value of that file.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
+SERVICE_DIR="$ROOT_DIR/services/iam"
 
-CONFIG_FILE="$ROOT_DIR/cmd/iam/.local.env"
-CERT_FILE="$ROOT_DIR/cmd/iam/.local.crt"
-KEY_FILE="$ROOT_DIR/cmd/iam/.local.key"
+CONFIG_FILE="$SERVICE_DIR/cmd/iam/.local.env"
+CERT_FILE="$SERVICE_DIR/cmd/iam/.local.crt"
+KEY_FILE="$SERVICE_DIR/cmd/iam/.local.key"
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
   echo "Missing local IAM config: $CONFIG_FILE" >&2
   echo "Initialize it with:" >&2
-  echo "  cp \"$ROOT_DIR/cmd/iam/.example.env\" \"$CONFIG_FILE\"" >&2
+  echo "  cp \"$SERVICE_DIR/cmd/iam/.example.env\" \"$CONFIG_FILE\"" >&2
   exit 1
 fi
 
@@ -35,5 +37,7 @@ fi
 export HTTP_SERVER_CERT_FILE="$CERT_FILE"
 export HTTP_SERVER_KEY_FILE="$KEY_FILE"
 
-cd "$ROOT_DIR"
+# The config loader looks for cmd/iam/.local.env relative to the working
+# directory, so the service runs from its own directory.
+cd "$SERVICE_DIR"
 exec go run ./cmd/iam -env=local

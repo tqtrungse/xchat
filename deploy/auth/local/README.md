@@ -52,7 +52,7 @@ scripts/local/infra.sh up -d --force-recreate keycloak
 
 ## Start IAM
 
-`cmd/iam/.example.env` has the OIDC settings for this realm:
+`services/iam/cmd/iam/.example.env` has the OIDC settings for this realm:
 
 ```sh
 HTTP_SERVER_OIDC_ISSUER=http://localhost:8180/realms/iam-local
@@ -66,7 +66,7 @@ other host must use `https`.
 Create the local config once, then start IAM:
 
 ```sh
-cp cmd/iam/.example.env cmd/iam/.local.env
+cp services/iam/cmd/iam/.example.env services/iam/cmd/iam/.local.env
 scripts/local/iam.sh
 ```
 

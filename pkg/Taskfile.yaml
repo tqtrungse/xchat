@@ -1,0 +1,96 @@
+version: '3'
+
+vars:
+  MODULES:
+    - bytesconv
+    - collection
+    - config
+    - cpu
+    - database
+    - generator
+    - jitter
+    - jwt
+    - k8s
+    - log
+    - pool
+    - reject
+
+tasks:
+  mock:
+    desc: Generate the pkg mocks
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - mockgen -source=database/sql/port.go -destination=database/sql/mocks/port_mock.go -package=mocks
+      - mockgen -source=generator/port.go -destination=generator/mocks/port_mock.go -package=mocks
+      - mockgen -source=jwt/port.go -destination=jwt/mocks/port_mock.go -package=mocks
+
+  tidy:
+    desc: Run go mod tidy for each pkg module
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - for: { var: MODULES }
+        cmd: cd {{.ITEM}} && go mod tidy
+
+  tidy:check:
+    desc: Fail if a pkg go.mod or go.sum file is not tidy
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - for: { var: MODULES }
+        cmd: cd {{.ITEM}} && go mod tidy -diff
+
+  fmt:
+    desc: Fail if a pkg file is not formatted with gofmt
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - |
+        unformatted="$(gofmt -l .)"
+        if [ -n "$unformatted" ]; then
+          echo "Not formatted:" >&2
+          echo "$unformatted" >&2
+          exit 1
+        fi
+
+  lint:
+    desc: Run golangci-lint on each pkg module
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - for: { var: MODULES }
+        cmd: cd {{.ITEM}} && golangci-lint run ./...
+
+  vet:
+    desc: Run go vet on each pkg module
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - for: { var: MODULES }
+        cmd: cd {{.ITEM}} && go vet ./...
+
+  test:
+    desc: Run the tests of each pkg module
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - for: { var: MODULES }
+        cmd: cd {{.ITEM}} && go test ./...
+
+  build:
+    desc: Build each pkg module
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - for: { var: MODULES }
+        cmd: cd {{.ITEM}} && go build ./...
+
+  check:isolated:
+    desc: Build and test each pkg module without go.work, as CI and Docker do
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - task: tidy:check
+      - for: { var: MODULES }
+        cmd: cd {{.ITEM}} && GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test ./...
+
+  all:
+    desc: Run mock, lint, vet, test, and build for pkg
+    cmds:
+      - task: mock
+      - task: lint
+      - task: vet
+      - task: test
+      - task: build

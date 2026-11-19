@@ -1,0 +1,18 @@
+go 1.26.0
+
+use (
+	./pkg/bytesconv
+	./pkg/collection
+	./pkg/config
+	./pkg/cpu
+	./pkg/database
+	./pkg/generator
+	./pkg/jitter
+	./pkg/jwt
+	./pkg/k8s
+	./pkg/log
+	./pkg/pool
+	./pkg/reject
+	./services/iam
+	./services/internal/shared
+)

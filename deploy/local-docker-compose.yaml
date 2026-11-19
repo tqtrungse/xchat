@@ -27,7 +27,7 @@ services:
         condition: service_healthy
     container_name: chat-dbmigrator
     volumes:
-      - ../internal:/internal:ro
+      - ../services:/services:ro
     command: /bin/bash
     tty: true
     stdin_open: true

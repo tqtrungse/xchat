@@ -15,12 +15,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"xchat/pkg/jitter"
+	"xchat/pkg/log"
+
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
 	"go.uber.org/zap"
-
-	"xchat/pkg/jitter"
-	"xchat/pkg/log"
 )
 
 const (

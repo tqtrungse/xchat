@@ -1,0 +1,106 @@
+version: '3'
+
+tasks:
+  mock:
+    desc: Generate the IAM mocks
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - mockgen -source=internal/application/device/register/ports.go -destination=internal/application/device/register/mocks/ports_mock.go -package=mocks
+
+  json:
+    desc: Generate the IAM easyjson payloads
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - easyjson -all internal/application/device/register/payload.go
+
+  tidy:
+    desc: Run go mod tidy for IAM
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - go mod tidy
+
+  tidy:check:
+    desc: Fail if the IAM go.mod or go.sum file is not tidy
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - go mod tidy -diff
+
+  fmt:
+    desc: Fail if an IAM file is not formatted with gofmt
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - |
+        unformatted="$(gofmt -l .)"
+        if [ -n "$unformatted" ]; then
+          echo "Not formatted:" >&2
+          echo "$unformatted" >&2
+          exit 1
+        fi
+
+  lint:
+    desc: Run golangci-lint on IAM
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - golangci-lint run ./...
+
+  vet:
+    desc: Run go vet on IAM
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - go vet ./...
+
+  test:
+    desc: Run the IAM tests
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - go test ./...
+
+  build:
+    desc: Build the IAM module
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - go build ./...
+
+  check:isolated:
+    desc: Build and test IAM without go.work, as CI and Docker do
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - task: tidy:check
+      - GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test ./...
+
+  dbmigrate:
+    desc: Apply the IAM database schema
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - |
+        ../../scripts/local/infra.sh run --rm dbmigrator sh -c 'ridgepole -E local -c "/services/iam/db/config/ridgepole.yaml" -f "/services/iam/db/schemas/Schemafile" --apply --verbose;'
+
+  run:
+    desc: Run IAM locally with services/iam/cmd/iam/.local.env
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - bash ../../scripts/local/iam.sh
+
+  token:
+    desc: Print an access token of the local Keycloak test user
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - |
+        bash -o pipefail -c '
+        curl -fsS -X POST \
+          http://localhost:8180/realms/iam-local/protocol/openid-connect/token \
+          -H "Content-Type: application/x-www-form-urlencoded" \
+          --data-urlencode "grant_type=password" \
+          --data-urlencode "client_id=iam-test" \
+          --data-urlencode "username=iam-test" \
+          --data-urlencode "password=iam-test-password" | jq -r .access_token'
+
+  all:
+    desc: Run mock, json, lint, vet, test, and build for IAM
+    cmds:
+      - task: mock
+      - task: json
+      - task: lint
+      - task: vet
+      - task: test
+      - task: build

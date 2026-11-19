@@ -21,10 +21,12 @@ import (
 type Env string
 
 const (
-	// EnvProd reads cmd/SERVICE/.prod.env.
+	// EnvProd reads cmd/SERVICE/.prod.env, relative to the working directory
+	// (the directory of the service).
 	EnvProd Env = "prod"
 
-	// EnvLocal reads cmd/SERVICE/.local.env.
+	// EnvLocal reads cmd/SERVICE/.local.env, relative to the working directory
+	// (the directory of the service).
 	EnvLocal Env = "local"
 )
 

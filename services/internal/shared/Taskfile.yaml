@@ -1,0 +1,65 @@
+version: '3'
+
+tasks:
+  tidy:
+    desc: Run go mod tidy for the shared module
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - go mod tidy
+
+  tidy:check:
+    desc: Fail if the shared go.mod or go.sum file is not tidy
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - go mod tidy -diff
+
+  fmt:
+    desc: Fail if a shared file is not formatted with gofmt
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - |
+        unformatted="$(gofmt -l .)"
+        if [ -n "$unformatted" ]; then
+          echo "Not formatted:" >&2
+          echo "$unformatted" >&2
+          exit 1
+        fi
+
+  lint:
+    desc: Run golangci-lint on pkg
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - golangci-lint run ./...
+
+  vet:
+    desc: Run go vet on the shared module
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - go vet ./...
+
+  test:
+    desc: Run the shared tests
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - go test ./...
+
+  build:
+    desc: Build the shared module
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - go build ./...
+
+  check:isolated:
+    desc: Build and test the shared module without go.work, as CI and Docker do
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - task: tidy:check
+      - GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test ./...
+
+  all:
+    desc: Run lint, vet, test, and build for shared
+    cmds:
+      - task: lint
+      - task: vet
+      - task: test
+      - task: build

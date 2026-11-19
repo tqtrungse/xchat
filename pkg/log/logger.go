@@ -11,14 +11,14 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-
 	// logzapcore is a partial fork of zapcore. It gives the encoder and the
 	// core that move the buffer of the encoder to the sink, with no copy.
 	// Each other part of zap and zapcore comes from upstream. See
 	// zap/README.md.
 	logzapcore "xchat/pkg/log/zap/zapcore"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // shutdown holds the state that a root Logger and each Logger from that root
