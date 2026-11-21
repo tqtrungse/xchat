@@ -12,10 +12,12 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
-	registermocks "xchat/services/iam/internal/application/device/register/mocks"
+	"time"
 
+	registermocks "xchat/services/iam/internal/application/device/register/mocks"
 	"xchat/services/iam/internal/domain/device"
 	"xchat/services/iam/internal/domain/user"
 	"xchat/services/internal/shared/ticket"
@@ -272,6 +274,12 @@ type registerFixture struct {
 
 	users   []user.Info
 	devices []device.Info
+
+	// commitErr is the error that the transaction mock returns after the
+	// callback succeeds. It simulates an error at commit.
+	commitErr error
+	logger    *log.Logger
+	logPath   string
 }
 
 // newRegisterFixture makes a Usecase with mocks. The transaction and
@@ -281,8 +289,19 @@ func newRegisterFixture(t *testing.T, userWriterErr, deviceWriterErr error) *reg
 	t.Helper()
 
 	ctrl := gomock.NewController(t)
-	logger, closeFn, _ := logtest.New(t, log.Config{})
+	logger, closeFn, logPath := logtest.New(t, log.Config{})
 	t.Cleanup(func() { _ = closeFn() })
+
+	f := &registerFixture{
+		userReader:     registermocks.NewMockUserReader(ctrl),
+		userWriter:     registermocks.NewMockUserWriter(ctrl),
+		deviceWriter:   registermocks.NewMockDeviceWriter(ctrl),
+		passwordHasher: registermocks.NewMockPasswordHasher(ctrl),
+		keyDeriver:     registermocks.NewMockKeyDeriver(ctrl),
+		intGenerator:   generatormocks.NewMockInteger(ctrl),
+		logger:         logger,
+		logPath:        logPath,
+	}
 
 	db := sqlmocks.NewMockDB(ctrl)
 	db.EXPECT().
@@ -294,18 +313,13 @@ func newRegisterFixture(t *testing.T, userWriterErr, deviceWriterErr error) *reg
 	db.EXPECT().
 		Transaction(gomock.Any(), sql.TxSourcePrimary, gomock.Any()).
 		DoAndReturn(func(ctx context.Context, _ sql.TxSource, fn func(context.Context) error) error {
-			return fn(ctx)
+			err := fn(ctx)
+			if err != nil {
+				return err
+			}
+			return f.commitErr
 		}).
 		AnyTimes()
-
-	f := &registerFixture{
-		userReader:     registermocks.NewMockUserReader(ctrl),
-		userWriter:     registermocks.NewMockUserWriter(ctrl),
-		deviceWriter:   registermocks.NewMockDeviceWriter(ctrl),
-		passwordHasher: registermocks.NewMockPasswordHasher(ctrl),
-		keyDeriver:     registermocks.NewMockKeyDeriver(ctrl),
-		intGenerator:   generatormocks.NewMockInteger(ctrl),
-	}
 
 	f.keyDeriver.EXPECT().
 		ValidatePeerPub(gomock.Any()).
@@ -588,6 +602,127 @@ func TestDeviceRegisterRegisterDeviceError(t *testing.T) {
 			require.ErrorIs(t, regErr, test.wantErr)
 			require.NotErrorIs(t, regErr, cause, "the cause must not reach the client")
 			require.Nil(t, resp)
+		})
+	}
+}
+
+// TestDeviceRegisterMapReadErrorLogLevel checks the level of the log entry for
+// a read error. A request that the client canceled is not a server error. A
+// deadline of the server is a server error.
+func TestDeviceRegisterMapReadErrorLogLevel(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		makeCtx   func() (context.Context, context.CancelFunc)
+		readErr   error
+		wantError bool
+	}{
+		{
+			name: "database error",
+			makeCtx: func() (context.Context, context.CancelFunc) {
+				return context.WithCancel(context.Background())
+			},
+			readErr:   errors.New("connection refused"),
+			wantError: true,
+		},
+		{
+			name: "client canceled",
+			makeCtx: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx, cancel
+			},
+			readErr:   context.Canceled,
+			wantError: false,
+		},
+		{
+			name: "server deadline",
+			makeCtx: func() (context.Context, context.CancelFunc) {
+				return context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+			},
+			readErr:   context.DeadlineExceeded,
+			wantError: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logger, closeFn, logPath := logtest.New(t, log.Config{})
+			t.Cleanup(func() { _ = closeFn() })
+			ctx, cancel := tc.makeCtx()
+			defer cancel()
+
+			usecase := &Usecase{logger: logger}
+			err := usecase.mapReadError(ctx, tc.readErr)
+			require.ErrorIs(t, err, ErrInternal)
+
+			require.NoError(t, logger.Sync())
+			raw, err := os.ReadFile(logPath)
+			require.NoError(t, err)
+			if tc.wantError {
+				require.Contains(t, string(raw), `"level":"error"`)
+				require.Contains(t, string(raw), `"msg":"failed to read user"`)
+			} else {
+				require.NotContains(t, string(raw), `"level":"error"`)
+			}
+		})
+	}
+}
+
+// TestDeviceRegisterRegisterTransactionError checks an error that the
+// transaction returns after the callback succeeds, for example at commit. The
+// cause must not reach the client.
+func TestDeviceRegisterRegisterTransactionError(t *testing.T) {
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	req := validRegisterRequest(publicKey)
+	cause := errors.New("driver: bad connection at commit")
+
+	for _, test := range []struct {
+		name      string
+		commitErr error
+		wantErr   error
+		wantLog   bool
+	}{
+		{
+			name:      "commit has a lock conflict",
+			commitErr: fmt.Errorf("%w: mysql error 1213", sql.ErrLockConflict),
+			wantErr:   ErrBusy,
+			wantLog:   false,
+		},
+		{
+			name:      "commit fails",
+			commitErr: cause,
+			wantErr:   ErrInternal,
+			wantLog:   true,
+		},
+		{
+			name:      "database is closed",
+			commitErr: sql.ErrDBClosed,
+			wantErr:   ErrInternal,
+			wantLog:   true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newRegisterFixture(t, nil, nil)
+			f.commitErr = test.commitErr
+			f.expectRead(false, nil, nil)
+			f.passwordHasher.EXPECT().
+				Hash(gomock.Any(), req.Password).
+				Return([]byte("hash"), nil)
+
+			resp, regErr := f.register.Register(context.Background(), 1, req)
+			require.ErrorIs(t, regErr, test.wantErr)
+			require.NotErrorIs(t, regErr, test.commitErr, "the cause must not reach the client")
+			require.Nil(t, resp)
+
+			require.NoError(t, f.logger.Sync())
+			raw, err := os.ReadFile(f.logPath)
+			require.NoError(t, err)
+			if test.wantLog {
+				require.Contains(t, string(raw), `"level":"error"`)
+				require.Contains(t, string(raw), `"msg":"failed to run the register transaction"`)
+			} else {
+				require.NotContains(t, string(raw), `"level":"error"`)
+			}
 		})
 	}
 }

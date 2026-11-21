@@ -96,7 +96,7 @@ func (u *Usecase) Register(
 		return err
 	})
 	if err != nil {
-		return nil, u.mapReadError(err)
+		return nil, u.mapReadError(ctx, err)
 	}
 
 	if storedUser == nil {
@@ -108,23 +108,44 @@ func (u *Usecase) Register(
 		return nil, u.mapPasswordError(err)
 	}
 
+	// The callback returns only errors of this use case. Transaction can also
+	// return an error of the database, for example if it cannot begin or commit
+	// the transaction. mappedErr keeps the error of the callback, so that the
+	// two kinds stay separate.
+	var mappedErr error
 	err = u.db.Transaction(ctx, sql.TxSourcePrimary, func(dbCtx context.Context) error {
 		if storedUser == nil {
-			err = u.createUser(dbCtx, userID, passwordHash, req)
+			mappedErr = u.createUser(dbCtx, userID, passwordHash, req)
 		} else {
-			err = u.lockAndCheck(dbCtx, userID, storedUser)
+			mappedErr = u.lockAndCheck(dbCtx, userID, storedUser)
 		}
-		if err != nil {
-			return err
+		if mappedErr != nil {
+			return mappedErr
 		}
-		return u.createDevice(dbCtx, userID, device.ID(id), req)
+		mappedErr = u.createDevice(dbCtx, userID, device.ID(id), req)
+		return mappedErr
 	})
+	if mappedErr != nil {
+		return nil, mappedErr
+	}
 	if err != nil {
-		return nil, err
+		return nil, u.mapTransactionError(ctx, err)
 	}
 	return &Response{
 		DeviceID: device.ID(id).String(),
-	}, err
+	}, nil
+}
+
+// mapTransactionError converts an error of the database transaction to an
+// error of this use case. A lock conflict, for example a deadlock at commit, is
+// temporary. The client can try again. Any other error is a server error.
+// mapTransactionError logs it and hides the cause from the client.
+func (u *Usecase) mapTransactionError(ctx context.Context, err error) error {
+	if sql.IsLockConflict(err) {
+		return ErrBusy
+	}
+	u.logError(ctx, "failed to run the register transaction", err)
+	return ErrInternal
 }
 
 func (u *Usecase) createUser(
@@ -157,7 +178,7 @@ func (u *Usecase) createUser(
 	if errors.Is(err, user.ErrUniqueConflict) {
 		return ErrUserExists
 	}
-	u.logger.Error("failed to register user", zap.Error(err))
+	u.logError(dbCtx, "failed to register user", err)
 	return ErrInternal
 }
 
@@ -186,7 +207,7 @@ func (u *Usecase) createDevice(
 	if errors.Is(err, device.ErrAlreadyExists) {
 		return ErrDeviceExists
 	}
-	u.logger.Error("failed to register device", zap.Error(err))
+	u.logError(dbCtx, "failed to register device", err)
 	return ErrInternal
 }
 
@@ -219,7 +240,7 @@ func (u *Usecase) lockAndCheck(
 ) error {
 	locked, err := u.userReader.Get(dbCtx, userID, true)
 	if err != nil {
-		return u.mapReadError(err)
+		return u.mapReadError(dbCtx, err)
 	}
 	if locked == nil {
 		return ErrBusy
@@ -245,12 +266,24 @@ func (u *Usecase) lockAndCheck(
 // mapReadError converts an error of the user reader to an error of this use
 // case. A lock conflict is temporary. The client can try again. Any other error
 // is a server error. mapReadError logs it and hides the cause from the client.
-func (u *Usecase) mapReadError(err error) error {
+func (u *Usecase) mapReadError(ctx context.Context, err error) error {
 	if sql.IsLockConflict(err) {
 		return ErrBusy
 	}
-	u.logger.Error("failed to read user", zap.Error(err))
+	u.logError(ctx, "failed to read user", err)
 	return ErrInternal
+}
+
+// logError logs err at the error level. If the client canceled the request,
+// logError logs err at the debug level, because the failure is then not a
+// server error. A deadline of the server is a server error, so it stays at the
+// error level.
+func (u *Usecase) logError(ctx context.Context, message string, err error) {
+	if errors.Is(ctx.Err(), context.Canceled) {
+		u.logger.Debug(message, zap.Error(err))
+		return
+	}
+	u.logger.Error(message, zap.Error(err))
 }
 
 // mapPasswordError converts an error of the password hasher to an error of
