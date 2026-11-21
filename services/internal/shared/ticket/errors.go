@@ -7,4 +7,7 @@ package ticket
 
 import "errors"
 
-var ErrIdentityPubInvalid = errors.New("invalid identity public key")
+var (
+	ErrIdentityPubInvalid = errors.New("invalid identity public key")
+	ErrTicketInvalid      = errors.New("invalid ticket")
+)
