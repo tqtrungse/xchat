@@ -5,7 +5,25 @@
 
 package issue_ticket
 
-import "xchat/services/internal/shared/ticket"
+import (
+	"context"
+
+	"xchat/services/iam/internal/domain/device"
+	"xchat/services/iam/internal/domain/user"
+	"xchat/services/internal/shared/ticket"
+)
+
+type DeviceMeta struct {
+	UserID      user.ID
+	State       device.State
+	IdentityPub []byte
+}
+
+type DeviceReader interface {
+	// GetMeta loads the device owner, state, and identity key from the
+	// database context, returning nil, nil when no device is found.
+	GetMeta(dbCtx context.Context, deviceID device.ID) (*DeviceMeta, error)
+}
 
 type TicketSigner interface {
 	// Sign validates and signs the ticket claims, transferring ownership of the

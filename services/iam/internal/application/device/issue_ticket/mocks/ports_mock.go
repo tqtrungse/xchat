@@ -10,11 +10,53 @@
 package mocks
 
 import (
+	context "context"
 	reflect "reflect"
+	issue_ticket "xchat/services/iam/internal/application/device/issue_ticket"
+	device "xchat/services/iam/internal/domain/device"
 	ticket "xchat/services/internal/shared/ticket"
 
 	gomock "go.uber.org/mock/gomock"
 )
+
+// MockDeviceReader is a mock of DeviceReader interface.
+type MockDeviceReader struct {
+	ctrl     *gomock.Controller
+	recorder *MockDeviceReaderMockRecorder
+	isgomock struct{}
+}
+
+// MockDeviceReaderMockRecorder is the mock recorder for MockDeviceReader.
+type MockDeviceReaderMockRecorder struct {
+	mock *MockDeviceReader
+}
+
+// NewMockDeviceReader creates a new mock instance.
+func NewMockDeviceReader(ctrl *gomock.Controller) *MockDeviceReader {
+	mock := &MockDeviceReader{ctrl: ctrl}
+	mock.recorder = &MockDeviceReaderMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockDeviceReader) EXPECT() *MockDeviceReaderMockRecorder {
+	return m.recorder
+}
+
+// GetMeta mocks base method.
+func (m *MockDeviceReader) GetMeta(dbCtx context.Context, deviceID device.ID) (*issue_ticket.DeviceMeta, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetMeta", dbCtx, deviceID)
+	ret0, _ := ret[0].(*issue_ticket.DeviceMeta)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetMeta indicates an expected call of GetMeta.
+func (mr *MockDeviceReaderMockRecorder) GetMeta(dbCtx, deviceID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMeta", reflect.TypeOf((*MockDeviceReader)(nil).GetMeta), dbCtx, deviceID)
+}
 
 // MockTicketSigner is a mock of TicketSigner interface.
 type MockTicketSigner struct {
