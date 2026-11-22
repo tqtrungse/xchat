@@ -13,8 +13,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"xchat/services/iam/internal/application/device/issue_ticket"
 
+	"xchat/services/iam/internal/application/device/issueticket"
 	"xchat/services/iam/internal/domain/device"
 	"xchat/services/iam/internal/domain/user"
 
@@ -36,7 +36,7 @@ func Test_DeviceReader_GetMeta(t *testing.T) {
 	type testcase struct {
 		prepare  func(f *fields)
 		deviceID device.ID
-		expected *issue_ticket.DeviceMeta
+		expected *issueticket.DeviceMeta
 		wantErr  bool
 	}
 
@@ -75,7 +75,7 @@ func Test_DeviceReader_GetMeta(t *testing.T) {
 					)
 			},
 			deviceID: device.ID(21),
-			expected: &issue_ticket.DeviceMeta{
+			expected: &issueticket.DeviceMeta{
 				UserID:      user.ID(123),
 				State:       device.StateLocked,
 				IdentityPub: identityPub,
@@ -133,7 +133,7 @@ func Test_DeviceReader_GetMeta(t *testing.T) {
 
 			var (
 				err    error
-				ret    *issue_ticket.DeviceMeta
+				ret    *issueticket.DeviceMeta
 				reader = NewDeviceReader()
 			)
 

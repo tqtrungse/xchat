@@ -9,7 +9,7 @@ import (
 	"context"
 	"errors"
 
-	"xchat/services/iam/internal/application/device/issue_ticket"
+	"xchat/services/iam/internal/application/device/issueticket"
 	"xchat/services/iam/internal/domain/device"
 	"xchat/services/iam/internal/domain/user"
 	"xchat/services/iam/internal/infrastructure/mysql/model"
@@ -29,7 +29,7 @@ func NewDeviceReader() DeviceReader {
 // GetMeta reads the user ID of the owner, the state, and the identity public
 // key of the device. It returns nil if the device does not exist or is
 // deleted. The soft delete of model.Device adds the deleted_at condition.
-func (dr *DeviceReader) GetMeta(dbCtx context.Context, deviceID device.ID) (*issue_ticket.DeviceMeta, error) {
+func (dr *DeviceReader) GetMeta(dbCtx context.Context, deviceID device.ID) (*issueticket.DeviceMeta, error) {
 	val, err := sql.ExtractDB(dbCtx)
 	if err != nil {
 		return nil, err
@@ -60,7 +60,7 @@ func (dr *DeviceReader) GetMeta(dbCtx context.Context, deviceID device.ID) (*iss
 		return nil, err
 	}
 
-	return &issue_ticket.DeviceMeta{
+	return &issueticket.DeviceMeta{
 		UserID:      record.UserID,
 		State:       record.State,
 		IdentityPub: record.IdentityPub,
