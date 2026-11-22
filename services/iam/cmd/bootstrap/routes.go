@@ -13,6 +13,7 @@ import (
 	iamhttp "xchat/services/iam/internal/adapter/http"
 	"xchat/services/iam/internal/adapter/http/rejection"
 	"xchat/services/iam/internal/adapter/http/route"
+	"xchat/services/iam/internal/application/device/issueticket"
 	"xchat/services/iam/internal/application/device/register"
 	"xchat/services/iam/internal/infrastructure/crypto"
 	"xchat/services/iam/internal/infrastructure/mysql"
@@ -46,9 +47,22 @@ func buildRoutes(
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to make the machine ID: %w", err)
 	}
+
 	intGenerator, err := generator.NewInt(id)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create the ID generator: %w", err)
+	}
+
+	// Read and validate all config before the database opens. A wrong config then
+	// does not open a connection.
+	ticketSigner, err := loadTicketSigner(loader)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to load the ticket signer: %w", err)
+	}
+
+	hubDescriptor, err := loadHubEndpoint(loader)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to load the hub descriptor: %w", err)
 	}
 
 	db := sql.NewMySql(logger)
@@ -72,6 +86,7 @@ func buildRoutes(
 		passwordHasher = crypto.NewBcrypt(0) // The default is 3/4 of GOMAXPROCS.
 		userReader     = mysql.NewUserReader()
 		userWriter     = mysql.NewUserWriter()
+		deviceReader   = mysql.NewDeviceReader()
 		deviceWriter   = mysql.NewDeviceWriter()
 	)
 
@@ -85,10 +100,18 @@ func buildRoutes(
 		&userWriter,
 		&deviceWriter,
 	)
-	registerDeviceHandler, err := route.NewRegisterDeviceHandler(registerDeviceUsecase, logger, rejections)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create the register device handler: %w", err)
-	}
+	registerDeviceHandler := route.NewRegisterDeviceHandler(registerDeviceUsecase, logger, rejections)
 
-	return []iamhttp.Mounter{registerDeviceHandler}, closeDB, nil
+	// loadHubEndpoint validates the descriptor. The use case shares its public
+	// key bytes with each response, and nothing changes them after this point.
+	issueTicketUsecase := issueticket.New(
+		db,
+		logger,
+		&deviceReader,
+		ticketSigner,
+		*hubDescriptor,
+	)
+	issueDeviceTicketHandler := route.NewIssueDeviceTicketHandler(issueTicketUsecase, logger, rejections)
+
+	return []iamhttp.Mounter{registerDeviceHandler, issueDeviceTicketHandler}, closeDB, nil
 }

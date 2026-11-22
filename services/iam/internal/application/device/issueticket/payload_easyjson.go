@@ -7,7 +7,6 @@ import (
 	easyjson "github.com/mailru/easyjson"
 	jlexer "github.com/mailru/easyjson/jlexer"
 	jwriter "github.com/mailru/easyjson/jwriter"
-	hub "xchat/services/internal/shared/hub"
 )
 
 // suppress unused package warning
@@ -40,7 +39,11 @@ func easyjsonA8a797f8DecodeXchatServicesIamInternalApplicationDeviceIssueticket(
 				out.Ticket = in.Bytes()
 			}
 		case "hub":
-			easyjsonA8a797f8DecodeXchatServicesInternalSharedHub(in, &out.Hub)
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				(out.Hub).UnmarshalEasyJSON(in)
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -63,7 +66,7 @@ func easyjsonA8a797f8EncodeXchatServicesIamInternalApplicationDeviceIssueticket(
 	{
 		const prefix string = ",\"hub\":"
 		out.RawString(prefix)
-		easyjsonA8a797f8EncodeXchatServicesInternalSharedHub(out, in.Hub)
+		(in.Hub).MarshalEasyJSON(out)
 	}
 	out.RawByte('}')
 }
@@ -90,103 +93,6 @@ func (v *Response) UnmarshalJSON(data []byte) error {
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *Response) UnmarshalEasyJSON(l *jlexer.Lexer) {
 	easyjsonA8a797f8DecodeXchatServicesIamInternalApplicationDeviceIssueticket(l, v)
-}
-func easyjsonA8a797f8DecodeXchatServicesInternalSharedHub(in *jlexer.Lexer, out *hub.Descriptor) {
-	isTopLevel := in.IsStart()
-	if in.IsNull() {
-		if isTopLevel {
-			in.Consumed()
-		}
-		in.Skip()
-		return
-	}
-	in.Delim('{')
-	for !in.IsDelim('}') {
-		key := in.UnsafeFieldName(false)
-		in.WantColon()
-		switch key {
-		case "address":
-			if in.IsNull() {
-				in.Skip()
-			} else {
-				out.Address = string(in.String())
-			}
-		case "audience":
-			if in.IsNull() {
-				in.Skip()
-			} else {
-				out.Audience = string(in.String())
-			}
-		case "key_id":
-			if in.IsNull() {
-				in.Skip()
-			} else {
-				out.KeyID = uint32(in.Uint32())
-			}
-		case "public_key":
-			if in.IsNull() {
-				in.Skip()
-				out.PublicKey = nil
-			} else {
-				out.PublicKey = in.Bytes()
-			}
-		case "protocol":
-			if in.IsNull() {
-				in.Skip()
-			} else {
-				out.Protocol = string(in.String())
-			}
-		case "version":
-			if in.IsNull() {
-				in.Skip()
-			} else {
-				out.Version = uint8(in.Uint8())
-			}
-		default:
-			in.SkipRecursive()
-		}
-		in.WantComma()
-	}
-	in.Delim('}')
-	if isTopLevel {
-		in.Consumed()
-	}
-}
-func easyjsonA8a797f8EncodeXchatServicesInternalSharedHub(out *jwriter.Writer, in hub.Descriptor) {
-	out.RawByte('{')
-	first := true
-	_ = first
-	{
-		const prefix string = ",\"address\":"
-		out.RawString(prefix[1:])
-		out.String(string(in.Address))
-	}
-	{
-		const prefix string = ",\"audience\":"
-		out.RawString(prefix)
-		out.String(string(in.Audience))
-	}
-	{
-		const prefix string = ",\"key_id\":"
-		out.RawString(prefix)
-		out.Uint32(uint32(in.KeyID))
-	}
-	{
-		const prefix string = ",\"public_key\":"
-		out.RawString(prefix)
-		out.Base64Bytes(in.PublicKey)
-	}
-	{
-		const prefix string = ",\"protocol\":"
-		out.RawString(prefix)
-		out.String(string(in.Protocol))
-	}
-	{
-		const prefix string = ",\"version\":"
-		out.RawString(prefix)
-		out.Uint8(uint8(in.Version))
-	}
-	out.RawByte('}')
 }
 func easyjsonA8a797f8DecodeXchatServicesIamInternalApplicationDeviceIssueticket1(in *jlexer.Lexer, out *Request) {
 	isTopLevel := in.IsStart()

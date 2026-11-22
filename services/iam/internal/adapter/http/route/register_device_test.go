@@ -19,6 +19,7 @@ import (
 
 	"xchat/services/iam/internal/adapter/http/httpx"
 	"xchat/services/iam/internal/adapter/http/rejection"
+	"xchat/services/iam/internal/adapter/http/route/mocks"
 	"xchat/services/iam/internal/application/device/register"
 	"xchat/services/iam/internal/domain/user"
 
@@ -27,48 +28,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
-
-// stubDeviceRegisterer is a DeviceRegisterer that records its call.
-type stubDeviceRegisterer struct {
-	resp *register.Response
-	err  error
-
-	called bool
-	ctx    context.Context
-	userID user.ID
-	req    register.Request
-}
-
-func (s *stubDeviceRegisterer) Register(
-	ctx context.Context,
-	userID user.ID,
-	req *register.Request,
-) (*register.Response, error) {
-	s.called = true
-	s.ctx = ctx
-	s.userID = userID
-	s.req = *req
-	return s.resp, s.err
-}
-
-func TestNewRegisterDeviceHandlerRequiresArguments(t *testing.T) {
-	logger, rejections := newTestDeps(t)
-	usecase := &stubDeviceRegisterer{}
-
-	_, err := NewRegisterDeviceHandler(nil, logger, rejections)
-	require.ErrorIs(t, err, errUsecaseRequired)
-
-	_, err = NewRegisterDeviceHandler(usecase, nil, rejections)
-	require.ErrorIs(t, err, errLoggerRequired)
-
-	_, err = NewRegisterDeviceHandler(usecase, logger, nil)
-	require.ErrorIs(t, err, errRejectionsRequired)
-
-	handler, err := NewRegisterDeviceHandler(usecase, logger, rejections)
-	require.NoError(t, err)
-	require.NotNil(t, handler)
-}
 
 func TestMapRegisterDeviceError(t *testing.T) {
 	t.Parallel()
@@ -171,7 +132,7 @@ const validRegisterDeviceBody = `{
 // the claims as authenticate does.
 type registerDeviceFixture struct {
 	engine     *gin.Engine
-	usecase    *stubDeviceRegisterer
+	usecase    *mocks.MockDeviceRegisterer
 	rejections interface{ Count(rejection.Reason) uint64 }
 	logger     *log.Logger
 	logPath    string
@@ -182,15 +143,14 @@ type registerDeviceFixture struct {
 func newRegisterDeviceFixture(
 	t *testing.T,
 	claims *jwt.Claims,
-	usecase *stubDeviceRegisterer,
 	middleware ...gin.HandlerFunc,
 ) *registerDeviceFixture {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
+	usecase := mocks.NewMockDeviceRegisterer(gomock.NewController(t))
 	logger, rejections, logPath := newTestDepsWithLog(t)
-	handler, err := NewRegisterDeviceHandler(usecase, logger, rejections)
-	require.NoError(t, err)
+	handler := NewRegisterDeviceHandler(usecase, logger, rejections)
 
 	engine := gin.New()
 	group := engine.Group("/api")
@@ -210,6 +170,24 @@ func newRegisterDeviceFixture(
 		logger:     logger,
 		logPath:    logPath,
 	}
+}
+
+// expectRegister sets the call that the use case must receive for the valid
+// body of the tests. The call returns resp and err. check can inspect the
+// request. It runs before the handler clears the buffers of the request.
+func (f *registerDeviceFixture) expectRegister(
+	check func(req *register.Request),
+	resp *register.Response,
+	err error,
+) {
+	f.usecase.EXPECT().
+		Register(gomock.Not(gomock.Nil()), user.ID(42), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ user.ID, req *register.Request) (*register.Response, error) {
+			if check != nil {
+				check(req)
+			}
+			return resp, err
+		})
 }
 
 // log gives the text that the logger wrote.
@@ -243,8 +221,16 @@ func (f *registerDeviceFixture) requireRejections(t *testing.T, want map[rejecti
 }
 
 func TestRegisterDeviceSuccess(t *testing.T) {
-	usecase := &stubDeviceRegisterer{resp: &register.Response{DeviceID: "dev-1"}}
-	f := newRegisterDeviceFixture(t, &jwt.Claims{UserID: "42"}, usecase)
+	f := newRegisterDeviceFixture(t, &jwt.Claims{UserID: "42"})
+	f.expectRegister(
+		func(req *register.Request) {
+			require.Equal(t, "alice", req.Username)
+			require.Equal(t, uint16(32), req.PhoneTail)
+			require.Equal(t, "iPhone 15 iOS 18", req.DeviceName)
+		},
+		&register.Response{DeviceID: "dev-1"},
+		nil,
+	)
 
 	recorder := f.post(validRegisterDeviceBody)
 
@@ -253,12 +239,6 @@ func TestRegisterDeviceSuccess(t *testing.T) {
 	require.Equal(t, httpx.ContentTypeJSON, recorder.Header().Get("Content-Type"))
 	require.Equal(t, fmt.Sprint(recorder.Body.Len()), recorder.Header().Get("Content-Length"))
 
-	require.True(t, usecase.called)
-	require.Equal(t, user.ID(42), usecase.userID)
-	require.NotNil(t, usecase.ctx)
-	require.Equal(t, "alice", usecase.req.Username)
-	require.Equal(t, uint16(32), usecase.req.PhoneTail)
-	require.Equal(t, "iPhone 15 iOS 18", usecase.req.DeviceName)
 	f.requireRejections(t, nil)
 }
 
@@ -333,14 +313,14 @@ func TestRegisterDeviceRejectsRequest(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			usecase := &stubDeviceRegisterer{resp: &register.Response{DeviceID: "dev-1"}}
-			f := newRegisterDeviceFixture(t, test.claims, usecase)
+			// The fixture has no expected call. The mock fails the test if the
+			// handler calls the use case for this request.
+			f := newRegisterDeviceFixture(t, test.claims)
 
 			recorder := f.post(test.body)
 
 			require.Equal(t, test.wantStatus, recorder.Code)
 			require.JSONEq(t, test.wantJSON, recorder.Body.String())
-			require.False(t, usecase.called, "the use case must not run for this request")
 			f.requireRejections(t, test.wantRejections)
 		})
 	}
@@ -385,15 +365,14 @@ func TestRegisterDeviceUsecaseErrors(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			usecase := &stubDeviceRegisterer{err: test.err}
-			f := newRegisterDeviceFixture(t, &jwt.Claims{UserID: "42"}, usecase)
+			f := newRegisterDeviceFixture(t, &jwt.Claims{UserID: "42"})
+			f.expectRegister(nil, nil, test.err)
 
 			recorder := f.post(validRegisterDeviceBody)
 
 			require.Equal(t, test.wantStatus, recorder.Code)
 			require.JSONEq(t, test.wantJSON, recorder.Body.String())
 			require.Equal(t, test.wantRetryAfter, recorder.Header().Get("Retry-After"))
-			require.True(t, usecase.called)
 			f.requireRejections(t, test.wantRejections)
 		})
 	}
@@ -448,12 +427,11 @@ func TestRegisterDeviceResponseWriteFailure(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			usecase := &stubDeviceRegisterer{resp: &register.Response{DeviceID: "dev-1"}}
-			f := newRegisterDeviceFixture(t, &jwt.Claims{UserID: "42"}, usecase, failWrites(test.err))
+			f := newRegisterDeviceFixture(t, &jwt.Claims{UserID: "42"}, failWrites(test.err))
+			f.expectRegister(nil, &register.Response{DeviceID: "dev-1"}, nil)
 
 			f.post(validRegisterDeviceBody)
 
-			require.True(t, usecase.called, "the use case ran: the device exists")
 			f.requireRejections(t, test.wantRejections)
 
 			logged := f.log(t)
