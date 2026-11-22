@@ -29,15 +29,15 @@ func prettyDescriptor(t *testing.T, extra string) string {
 	require.NoError(t, err)
 
 	return fmt.Sprintf(`{
-	  "address": "hub.example.com:9000",
-	  "audience": "hub.chat",
-	  "key_id": 7,
-	  "protocol": "Noise_NK_25519_ChaChaPoly_SHA256",
-	  "public_key": %q,
-	  "version": %d%s
-	}
+		  "address": "hub.example.com:9000",
+		  "audience": "hub.chat",
+		  "key_id": 7,
+		  "protocol": "Noise_NK_25519_ChaChaPoly_SHA256",
+		  "public_key": %q,
+		  "version": %d%s
+		}
 	`,
-	base64.StdEncoding.EncodeToString(privateKey.PublicKey().Bytes()), hub.WireVersion, extra)
+		base64.StdEncoding.EncodeToString(privateKey.PublicKey().Bytes()), hub.WireVersion, extra)
 }
 
 func TestRejectDuplicateKeys(t *testing.T) {

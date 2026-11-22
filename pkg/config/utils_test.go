@@ -123,26 +123,6 @@ func TestFindPath_ConfigEnvIgnored(t *testing.T) {
 	assert.Empty(t, got)
 }
 
-func TestFindPath_CmdServiceFile(t *testing.T) {
-	dir := isolate(t)
-	writeFile(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), "A=1\n")
-
-	got, err := findPath("svc", EnvProd)
-	require.NoError(t, err)
-	assertSamePath(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), got)
-}
-
-// TestFindPath_CmdServiceFileLowerCase checks that the cmd folder name is in lower case,
-// for a service name in mixed case.
-func TestFindPath_CmdServiceFileLowerCase(t *testing.T) {
-	dir := isolate(t)
-	writeFile(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), "A=1\n")
-
-	got, err := findPath("SVC", EnvProd)
-	require.NoError(t, err)
-	assertSamePath(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), got)
-}
-
 func TestFindPath_WorkDirFile(t *testing.T) {
 	dir := isolate(t)
 	writeFile(t, filepath.Join(dir, ".prod.env"), "A=1\n")
@@ -152,23 +132,14 @@ func TestFindPath_WorkDirFile(t *testing.T) {
 	assertSamePath(t, filepath.Join(dir, ".prod.env"), got)
 }
 
-func TestFindPath_CmdServiceFileHasPriority(t *testing.T) {
+// TestFindPath_CmdServiceFileIgnored checks that the search does not read the cmd/SERVICE folder.
+func TestFindPath_CmdServiceFileIgnored(t *testing.T) {
 	dir := isolate(t)
-	writeFile(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), "A=cmd\n")
-	writeFile(t, filepath.Join(dir, ".prod.env"), "A=root\n")
+	writeFile(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), "A=1\n")
 
 	got, err := findPath("svc", EnvProd)
-	require.NoError(t, err)
-	assertSamePath(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), got)
-}
-
-// TestFindPath_OtherServiceFolderIgnored checks that the search uses only the folder of the given service.
-func TestFindPath_OtherServiceFolderIgnored(t *testing.T) {
-	dir := isolate(t)
-	writeFile(t, filepath.Join(dir, "cmd", "other", ".prod.env"), "A=1\n")
-
-	_, err := findPath("svc", EnvProd)
 	require.Error(t, err)
+	assert.Empty(t, got)
 }
 
 func TestFindPath_NotFound(t *testing.T) {
@@ -177,7 +148,11 @@ func TestFindPath_NotFound(t *testing.T) {
 	got, err := findPath("Svc", EnvProd)
 	require.Error(t, err)
 	assert.Empty(t, got)
-	assert.Equal(t, "svc config not found; provide cmd/svc/.prod.env", err.Error())
+	assert.Equal(
+		t,
+		"svc config not found; provide .prod.env in the working directory or next to the executable",
+		err.Error(),
+	)
 }
 
 // TestFindPath_CandidateIsFolder checks that a folder with the candidate name is a match.
@@ -193,32 +168,25 @@ func TestFindPath_CandidateIsFolder(t *testing.T) {
 
 // TestFindPath_StatError checks that a stat error other than ErrNotExist stops the search.
 func TestFindPath_StatError(t *testing.T) {
-	if os.Getuid() == 0 {
-		t.Skip("root ignores folder permissions")
-	}
 	dir := isolate(t)
-	cmdDir := filepath.Join(dir, "cmd", "svc")
-	writeFile(t, filepath.Join(cmdDir, ".prod.env"), "A=1\n")
-	writeFile(t, filepath.Join(dir, ".prod.env"), "A=1\n")
-	// A folder without the execute bit makes os.Stat of its children fail with EACCES.
-	require.NoError(t, os.Chmod(cmdDir, 0o600))
-	t.Cleanup(func() { _ = os.Chmod(cmdDir, 0o755) })
+	// A link to itself makes os.Stat fail with ELOOP, and not with ErrNotExist.
+	require.NoError(t, os.Symlink(".prod.env", filepath.Join(dir, ".prod.env")))
 
 	got, err := findPath("svc", EnvProd)
 	require.Error(t, err)
 	assert.Empty(t, got)
-	assert.ErrorIs(t, err, os.ErrPermission)
+	assert.NotErrorIs(t, err, os.ErrNotExist)
 	assert.Contains(t, err.Error(), "inspect svc config")
 }
 
 func TestFindPath_LocalEnv(t *testing.T) {
 	dir := isolate(t)
-	writeFile(t, filepath.Join(dir, "cmd", "svc", ".local.env"), "A=local\n")
-	writeFile(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), "A=prod\n")
+	writeFile(t, filepath.Join(dir, ".local.env"), "A=local\n")
+	writeFile(t, filepath.Join(dir, ".prod.env"), "A=prod\n")
 
 	got, err := findPath("svc", EnvLocal)
 	require.NoError(t, err)
-	assertSamePath(t, filepath.Join(dir, "cmd", "svc", ".local.env"), got)
+	assertSamePath(t, filepath.Join(dir, ".local.env"), got)
 }
 
 func TestFindPath_LocalEnvIgnoresProdFile(t *testing.T) {
@@ -298,7 +266,7 @@ func TestDefaultLoader_ExactFile(t *testing.T) {
 
 func TestLoad_DotEnvFile(t *testing.T) {
 	dir := isolate(t)
-	writeFile(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), "APP_NAME=demo\nAPP_PORT=8080\n")
+	writeFile(t, filepath.Join(dir, ".prod.env"), "APP_NAME=demo\nAPP_PORT=8080\n")
 
 	l, err := Load("svc", EnvProd)
 	require.NoError(t, err)
@@ -308,8 +276,8 @@ func TestLoad_DotEnvFile(t *testing.T) {
 
 func TestLoad_LocalEnv(t *testing.T) {
 	dir := isolate(t)
-	writeFile(t, filepath.Join(dir, "cmd", "svc", ".prod.env"), "APP_NAME=prod\n")
-	writeFile(t, filepath.Join(dir, "cmd", "svc", ".local.env"), "APP_NAME=local\n")
+	writeFile(t, filepath.Join(dir, ".prod.env"), "APP_NAME=prod\n")
+	writeFile(t, filepath.Join(dir, ".local.env"), "APP_NAME=local\n")
 
 	l, err := Load("svc", EnvLocal)
 	require.NoError(t, err)
@@ -341,7 +309,7 @@ func TestLoad_KeysAreCaseInsensitive(t *testing.T) {
 
 func TestLoad_TypedGetters(t *testing.T) {
 	dir := isolate(t)
-	path := filepath.Join(dir, "cmd", "svc", ".prod.env")
+	path := filepath.Join(dir, ".prod.env")
 	// A dotenv file stores each value as a string. The loader converts it.
 	writeFile(
 		t,
@@ -382,7 +350,7 @@ func TestLoad_TypedGetters(t *testing.T) {
 // TestLoad_IsSetZeroValue checks that IsSet tells an explicit zero value from an absent key.
 func TestLoad_IsSetZeroValue(t *testing.T) {
 	dir := isolate(t)
-	path := filepath.Join(dir, "cmd", "svc", ".prod.env")
+	path := filepath.Join(dir, ".prod.env")
 	writeFile(t, path, "ZERO=0\nEMPTY=\"\"\nOFF=false\n")
 
 	l, err := Load("svc", EnvProd)

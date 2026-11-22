@@ -52,7 +52,7 @@ scripts/local/infra.sh up -d --force-recreate keycloak
 
 ## Start IAM
 
-`services/iam/cmd/iam/.example.env` has the OIDC settings for this realm:
+`../../../services/iam/cmd/.template.env` has the OIDC settings for this realm:
 
 ```sh
 HTTP_SERVER_OIDC_ISSUER=http://localhost:8180/realms/iam-local
@@ -66,11 +66,14 @@ other host must use `https`.
 Create the local config once, then start IAM:
 
 ```sh
-cp services/iam/cmd/iam/.example.env services/iam/cmd/iam/.local.env
+cp services/iam/cmd/.template.env services/iam/cmd/.local.env
 scripts/local/iam.sh
 ```
 
-The script creates a self-signed certificate for `localhost` and runs IAM with
+The script creates a self-signed certificate for `localhost`. It also generates
+an Ed25519 ticket signing key and a **fake** hub descriptor, if the config has
+none. No hub holds the private key of the fake descriptor, so a client cannot
+use a ticket from this setup to connect to a hub. The script runs IAM with
 `-env=local`. IAM reports readiness after it loads the JWKS:
 
 ```sh

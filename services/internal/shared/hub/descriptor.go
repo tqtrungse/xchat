@@ -52,5 +52,6 @@ func (d *Descriptor) Validate() error {
 	if err != nil {
 		return err
 	}
+
 	return validatePublicKey(d.PublicKey)
 }

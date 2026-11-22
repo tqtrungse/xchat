@@ -25,7 +25,8 @@ import (
 var errDuplicateKey = errors.New("hub descriptor has a duplicate key")
 
 // loadHubEndpoint reads public data only. It intentionally rejects a private
-// keyring or extra private_key field. It is wired into ticket issuance in step 4.
+// keyring or extra private_key field. buildRoutes gives the descriptor to the
+// issue ticket use case.
 func loadHubEndpoint(loader config.Loader) (*hub.Descriptor, error) {
 	if loader == nil {
 		return nil, fmt.Errorf("config loader is nil")

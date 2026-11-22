@@ -6,6 +6,7 @@
 package bootstrap
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -42,6 +43,8 @@ func (l mapLoader) GetUint64(key string) uint64 {
 	return value
 }
 
+func (l mapLoader) GetUint8(key string) uint8 { return uint8(l.GetUint64(key)) }
+
 // TestBuildRoutesFailsBeforeOpeningTheDatabase checks that buildRoutes reads
 // and validates all config before it connects to the database. The test has no
 // database, so a call that reached db.Open would fail with another error.
@@ -52,6 +55,18 @@ func TestBuildRoutesFailsBeforeOpeningTheDatabase(t *testing.T) {
 		"SQL_DATABASE_USER":            "iam",
 		"SQL_DATABASE_NAME":            "iam",
 		"SQL_DATABASE_PRIMARY_ADDRESS": "127.0.0.1:1",
+	}
+
+	machine := map[string]string{
+		"SERVICE_ID":  "2",
+		"INSTANCE_ID": "0",
+	}
+
+	// The private key is a Base64 Ed25519 seed of 32 zero bytes. It is a test
+	// value only.
+	ticketSigning := map[string]string{
+		"TICKET_SIGNING_KEY_ID":      "1",
+		"TICKET_SIGNING_PRIVATE_KEY": strings.Repeat("A", 43) + "=",
 	}
 
 	merge := func(parts ...map[string]string) map[string]string {
@@ -88,6 +103,24 @@ func TestBuildRoutesFailsBeforeOpeningTheDatabase(t *testing.T) {
 			name:    "instance ID out of range",
 			values:  merge(database, map[string]string{"SERVICE_ID": "2", "INSTANCE_ID": "256"}),
 			wantErr: "instance ID is out of range",
+		},
+		{
+			name:    "missing ticket signing key ID",
+			values:  merge(database, machine),
+			wantErr: "invalid TICKET_SIGNING_KEY_ID",
+		},
+		{
+			name: "invalid ticket signing private key",
+			values: merge(database, machine, map[string]string{
+				"TICKET_SIGNING_KEY_ID":      "1",
+				"TICKET_SIGNING_PRIVATE_KEY": "not-base64",
+			}),
+			wantErr: "decode ticket signing seed",
+		},
+		{
+			name:    "missing hub descriptor file",
+			values:  merge(database, machine, ticketSigning),
+			wantErr: "HUB_NOISE_DESCRIPTOR_FILE is required",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

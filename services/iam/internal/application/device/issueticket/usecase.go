@@ -56,14 +56,14 @@ func New(
 	}
 }
 
-// Issue issues a ticket for the device in req. The device must belong to the
+// IssueTicket issues a ticket for the device in req. The device must belong to the
 // user with ID userID, and the device must be active.
 //
 // Issue returns ErrRequestInvalid if the device ID is not valid. It returns
 // ErrDeviceNotFound if the device does not exist, is deleted, or belongs to
 // another user. It returns ErrDeviceInactive if the device is not active. It
 // returns ErrInternal for any other failure.
-func (u *Usecase) Issue(
+func (u *Usecase) IssueTicket(
 	ctx context.Context,
 	userID user.ID,
 	req Request,

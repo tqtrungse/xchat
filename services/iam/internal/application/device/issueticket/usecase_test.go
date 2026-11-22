@@ -138,7 +138,7 @@ func TestIssueRejectsInvalidDeviceID(t *testing.T) {
 			// the test.
 			f := newFixture(t, validHub())
 
-			resp, err := f.issuer.Issue(context.Background(), testUserID, issueticket.Request{DeviceID: tc.deviceID})
+			resp, err := f.issuer.IssueTicket(context.Background(), testUserID, issueticket.Request{DeviceID: tc.deviceID})
 			require.ErrorIs(t, err, issueticket.ErrRequestInvalid)
 			require.Nil(t, resp)
 		})
@@ -188,7 +188,7 @@ func TestIssueRejectsDevice(t *testing.T) {
 			f := newFixture(t, validHub())
 			f.expectRead(tc.deviceMeta, tc.readErr)
 
-			resp, err := f.issuer.Issue(context.Background(), testUserID, issueticket.Request{DeviceID: "21"})
+			resp, err := f.issuer.IssueTicket(context.Background(), testUserID, issueticket.Request{DeviceID: "21"})
 			require.ErrorIs(t, err, tc.wantErr)
 			require.Nil(t, resp)
 		})
@@ -238,7 +238,7 @@ func TestIssueLogsReadError(t *testing.T) {
 			ctx, cancel := tc.makeCtx()
 			defer cancel()
 
-			resp, err := f.issuer.Issue(ctx, testUserID, issueticket.Request{DeviceID: "21"})
+			resp, err := f.issuer.IssueTicket(ctx, testUserID, issueticket.Request{DeviceID: "21"})
 			require.ErrorIs(t, err, issueticket.ErrInternal)
 			require.Nil(t, resp)
 
@@ -267,7 +267,7 @@ func TestIssueHidesSignError(t *testing.T) {
 		Sign(gomock.Any()).
 		Return(nil, ticket.ErrTicketInvalid)
 
-	resp, err := f.issuer.Issue(context.Background(), testUserID, issueticket.Request{DeviceID: "21"})
+	resp, err := f.issuer.IssueTicket(context.Background(), testUserID, issueticket.Request{DeviceID: "21"})
 	require.ErrorIs(t, err, issueticket.ErrInternal)
 	require.NotErrorIs(t, err, ticket.ErrTicketInvalid)
 	require.Nil(t, resp)
@@ -298,7 +298,7 @@ func TestIssueSuccess(t *testing.T) {
 		})
 
 	before := time.Now().Unix()
-	resp, err := f.issuer.Issue(context.Background(), testUserID, issueticket.Request{DeviceID: "21"})
+	resp, err := f.issuer.IssueTicket(context.Background(), testUserID, issueticket.Request{DeviceID: "21"})
 	after := time.Now().Unix()
 	require.NoError(t, err)
 	require.NotNil(t, resp)
