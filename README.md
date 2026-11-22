@@ -22,7 +22,7 @@ pkg/                 one Go module for each folder:
   reject/            module xchat/pkg/reject
 services/
   iam/               module xchat/services/iam
-    cmd/iam/         main package, bootstrap, and the .example.env file
+    cmd/             main package, bootstrap, and the .template.env file
     internal/        code that only this service can import
   internal/shared/   module xchat/services/internal/shared: types that several
                      services share

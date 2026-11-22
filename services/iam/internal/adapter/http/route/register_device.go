@@ -20,7 +20,6 @@ import (
 	"xchat/pkg/reject"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mailru/easyjson"
 	"go.uber.org/zap"
 )
 
@@ -53,27 +52,18 @@ type RegisterDeviceHandler struct {
 	rejections *reject.Stats[rejection.Reason]
 }
 
-// NewRegisterDeviceHandler makes a RegisterDeviceHandler. It returns an error
-// if an argument is nil.
+// NewRegisterDeviceHandler makes a RegisterDeviceHandler. The caller must give all
+// arguments.
 func NewRegisterDeviceHandler(
 	usecase DeviceRegisterer,
 	logger *log.Logger,
 	rejections *reject.Stats[rejection.Reason],
-) (*RegisterDeviceHandler, error) {
-	if usecase == nil {
-		return nil, errUsecaseRequired
-	}
-	if logger == nil {
-		return nil, errLoggerRequired
-	}
-	if rejections == nil {
-		return nil, errRejectionsRequired
-	}
+) *RegisterDeviceHandler {
 	return &RegisterDeviceHandler{
 		usecase:    usecase,
 		logger:     logger,
 		rejections: rejections,
-	}, nil
+	}
 }
 
 // Mount registers the route on group. group must run the authentication
@@ -83,10 +73,8 @@ func (h *RegisterDeviceHandler) Mount(group *gin.RouterGroup) {
 }
 
 func (h *RegisterDeviceHandler) handle(c *gin.Context) {
-	userID, ok := httpx.AuthenticatedUserID(c)
-	if !ok {
-		h.rejections.Record(rejection.AuthToken, httpx.ErrAuthVerify)
-		httpx.RespondInvalidToken(c)
+	userID, authenticated := requireAuthenticatedUser(c, h.rejections)
+	if !authenticated {
 		return
 	}
 
@@ -100,22 +88,21 @@ func (h *RegisterDeviceHandler) handle(c *gin.Context) {
 		slicepool.PutZeroed(req.DeviceIdentityPub)
 	}()
 
-	err := easyjson.UnmarshalFromReader(c.Request.Body, &req)
-	if err != nil {
-		// Decoder errors can contain request values; log only the rejection category.
-		if _, tooLarge := errors.AsType[*http.MaxBytesError](err); tooLarge {
-			h.rejections.Record(rejection.RequestBody, httpx.ErrBodyTooLarge)
-			httpx.RespondError(c, http.StatusRequestEntityTooLarge, "request_too_large", httpx.ErrBodyTooLarge.Error())
-			return
-		}
-		h.rejections.Record(rejection.RequestBody, httpx.ErrBodyInvalid)
-		httpx.RespondError(c, http.StatusBadRequest, "invalid_request_body", httpx.ErrBodyInvalid.Error())
+	if !decodeRequestBody(c, h.rejections, &req) {
 		return
 	}
 
 	resp, err := h.usecase.Register(c.Request.Context(), user.ID(userID), &req)
 	if err != nil {
-		h.respondUsecaseError(c, userID, err)
+		respondUsecaseFailure(
+			c,
+			h.logger,
+			h.rejections,
+			"failed to register device",
+			userID,
+			err,
+			mapRegisterDeviceError(err),
+		)
 		return
 	}
 
@@ -145,57 +132,14 @@ func (h *RegisterDeviceHandler) handle(c *gin.Context) {
 	}
 }
 
-// respondUsecaseError writes the response for an error of the use case.
-//
-// The response never contains the text of err. The use case already logs the
-// causes of ErrInternal, so only an error that the use case does not define is
-// logged here.
-func (h *RegisterDeviceHandler) respondUsecaseError(c *gin.Context, userID uint64, err error) {
-	failure := mapRegisterDeviceError(err)
-
-	switch {
-	case failure.reason != nil:
-		h.rejections.Record(rejection.RequestBody, failure.reason)
-
-	case failure.unexpected:
-		h.logger.Error(
-			"failed to register device",
-			zap.Uint64("user_id", userID),
-			zap.Error(err),
-		)
-	}
-
-	if failure.retryAfter != "" {
-		c.Header("Retry-After", failure.retryAfter)
-	}
-	httpx.RespondError(c, failure.status, failure.code, failure.description)
-}
-
-// registerDeviceFailure is the HTTP form of an error of the use case.
-type registerDeviceFailure struct {
-	status      int
-	code        string
-	description string
-
-	// reason is not nil if the client sent a request that is not valid. The
-	// handler records it in the rejection stats.
-	reason error
-
-	// retryAfter is the value of the Retry-After header. Optional.
-	retryAfter string
-
-	// unexpected is true if the use case does not define the error.
-	unexpected bool
-}
-
 // mapRegisterDeviceError converts an error of the use case to a response.
 //
 // A wrong credential and an invalid field give the same response. A client
 // cannot learn from the response whether the user exists.
-func mapRegisterDeviceError(err error) registerDeviceFailure {
+func mapRegisterDeviceError(err error) usecaseFailure {
 	switch {
 	case errors.Is(err, register.ErrRequestInvalid):
-		return registerDeviceFailure{
+		return usecaseFailure{
 			status:      http.StatusBadRequest,
 			code:        "invalid_request",
 			description: register.ErrRequestInvalid.Error(),
@@ -203,35 +147,35 @@ func mapRegisterDeviceError(err error) registerDeviceFailure {
 		}
 
 	case errors.Is(err, register.ErrUserLocked):
-		return registerDeviceFailure{
+		return usecaseFailure{
 			status:      http.StatusForbidden,
 			code:        "user_locked",
 			description: register.ErrUserLocked.Error(),
 		}
 
 	case errors.Is(err, register.ErrUserReachMaxDevices):
-		return registerDeviceFailure{
+		return usecaseFailure{
 			status:      http.StatusForbidden,
 			code:        "max_devices_reached",
 			description: register.ErrUserReachMaxDevices.Error(),
 		}
 
 	case errors.Is(err, register.ErrUserExists):
-		return registerDeviceFailure{
+		return usecaseFailure{
 			status:      http.StatusConflict,
 			code:        "user_exists",
 			description: register.ErrUserExists.Error(),
 		}
 
 	case errors.Is(err, register.ErrDeviceExists):
-		return registerDeviceFailure{
+		return usecaseFailure{
 			status:      http.StatusConflict,
 			code:        "device_exists",
 			description: register.ErrDeviceExists.Error(),
 		}
 
 	case errors.Is(err, register.ErrBusy):
-		return registerDeviceFailure{
+		return usecaseFailure{
 			status:      http.StatusServiceUnavailable,
 			code:        "busy",
 			description: register.ErrBusy.Error(),
@@ -239,14 +183,14 @@ func mapRegisterDeviceError(err error) registerDeviceFailure {
 		}
 
 	case errors.Is(err, register.ErrInternal):
-		return registerDeviceFailure{
+		return usecaseFailure{
 			status:      http.StatusInternalServerError,
 			code:        "internal_error",
 			description: httpx.ErrInternal.Error(),
 		}
 
 	default:
-		return registerDeviceFailure{
+		return usecaseFailure{
 			status:      http.StatusInternalServerError,
 			code:        "internal_error",
 			description: httpx.ErrInternal.Error(),

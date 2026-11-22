@@ -14,8 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-
-	"xchat/services/iam/cmd/iam/bootstrap"
+	"xchat/services/iam/cmd/bootstrap"
 
 	"xchat/pkg/config"
 )
@@ -25,9 +24,9 @@ func main() {
 }
 
 // parseArgs reads the command-line arguments. The -env flag selects the
-// config file: "prod" reads cmd/iam/.prod.env, and "local" reads
-// cmd/iam/.local.env. The default is "prod", so that a deployment needs no
-// flag.
+// config file: "prod" reads .prod.env, and "local" reads .local.env. The
+// loader searches the working directory first, and then the folder of the
+// executable. The default is "prod", so that a deployment needs no flag.
 func parseArgs(args []string, output io.Writer) (config.Env, error) {
 	flags := flag.NewFlagSet("iam", flag.ContinueOnError)
 	flags.SetOutput(output)

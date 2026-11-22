@@ -21,16 +21,18 @@ import (
 type Env string
 
 const (
-	// EnvProd reads cmd/SERVICE/.prod.env, relative to the working directory
-	// (the directory of the service).
+	// EnvProd reads .prod.env. See Load for the folders that Load searches.
 	EnvProd Env = "prod"
 
-	// EnvLocal reads cmd/SERVICE/.local.env, relative to the working directory
-	// (the directory of the service).
+	// EnvLocal reads .local.env. See Load for the folders that Load searches.
 	EnvLocal Env = "local"
 )
 
 // Load reads the config file of the service and the environment.
+//
+// Load searches the environment file in two folders. The first folder is the
+// working directory. The second folder is the folder of the executable. Load
+// uses the first file that it finds. serviceName appears in the errors only.
 func Load(serviceName string, env Env) (Loader, error) {
 	path, err := findPath(serviceName, env)
 	if err != nil {
@@ -78,10 +80,7 @@ func findPath(serviceName string, env Env) (string, error) {
 	}
 
 	serviceName = strings.ToLower(serviceName)
-	candidates := []string{
-		filepath.Join("cmd", serviceName, envFile),
-		envFile,
-	}
+	candidates := []string{envFile}
 	if executable, exeErr := os.Executable(); exeErr == nil {
 		candidates = append(candidates, filepath.Join(filepath.Dir(executable), envFile))
 	}
@@ -100,8 +99,7 @@ func findPath(serviceName string, env Env) (string, error) {
 		}
 	}
 	return "", fmt.Errorf(
-		"%s config not found; provide cmd/%s/%s",
-		serviceName,
+		"%s config not found; provide %s in the working directory or next to the executable",
 		serviceName,
 		envFile,
 	)

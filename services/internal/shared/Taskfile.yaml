@@ -1,6 +1,14 @@
 version: '3'
 
 tasks:
+  json:
+    desc: Generate the shared easyjson code
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      # -disallow_unknown_fields makes hub.Parse reject a field that
+      # Descriptor does not have, for example a private key.
+      - easyjson -all -disallow_unknown_fields hub/descriptor.go
+
   tidy:
     desc: Run go mod tidy for the shared module
     dir: '{{.TASKFILE_DIR}}'

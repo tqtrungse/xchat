@@ -37,3 +37,4 @@ profile.cov
 # Cert file
 .local.crt
 .local.key
+.local.hub-descriptor.json
