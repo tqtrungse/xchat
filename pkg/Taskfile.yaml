@@ -1,7 +1,7 @@
 version: '3'
 
 vars:
-  MODULES:
+  ALL_MODULES:
     - bytesconv
     - collection
     - config
@@ -14,6 +14,10 @@ vars:
     - log
     - pool
     - reject
+  # MODULES selects the modules for each task that loops over the modules. It
+  # is a space-separated list, for example MODULES="jwt log". The affected task
+  # of the root sets it. Default: all modules.
+  MODULES: '{{.MODULES | default (.ALL_MODULES | join " ")}}'
 
 tasks:
   mock:

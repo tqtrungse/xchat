@@ -16,6 +16,36 @@ tasks:
       - task --list
     silent: true
 
+  affected:
+    desc: Run the tasks of the modules that the diff affects
+    summary: |
+      Run each task in TARGET on the modules that the diff from the merge base
+      of BASE affects. TARGET is a comma-separated list of task names, such as
+      lint,vet,test. The tasks run in the order of TARGET, and the task stops at
+      the first failure. The diff includes uncommitted and untracked files. See
+      scripts/affected/main.go for the rules. It requires gta.
+
+      For each task name, it runs ns:name in each namespace that contains an
+      affected module. The pkg namespace gets only the affected modules in
+      MODULES. A namespace without the task is skipped with a message. If the
+      diff changes scripts/affected, build, vet, and test also run on that
+      module first.
+
+      Examples:
+        task affected
+        task affected TARGET=lint,vet,test
+        task affected BASE=origin/feat/x TARGET=vet
+    vars:
+      BASE: '{{.BASE | default "origin/master"}}'
+      TARGET: '{{.TARGET | default "test"}}'
+      # The module of the command is not in go.work, so GOWORK must be off.
+      COMMANDS:
+        sh: GOWORK=off go -C scripts/affected run . -base '{{.BASE}}' -tasks '{{.TARGET}}'
+    cmds:
+      - for: { var: COMMANDS, split: "\n" }
+        cmd: '{{.ITEM}}'
+      - cmd: '{{if not .COMMANDS}}echo "No module is affected."{{end}}'
+
   infra:up:
     desc: Start the local infrastructure
     cmds:

@@ -41,3 +41,6 @@ profile.cov
 
 # Codegraph
 .codegraph/
+
+# Scripts
+scripts/affected/affected
