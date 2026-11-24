@@ -22,13 +22,6 @@ import (
 // is long, so that a slow test machine does not reach it.
 const testUsecaseTimeout = time.Minute
 
-func newTestDeps(t *testing.T) (*log.Logger, *reject.Stats[rejection.Reason]) {
-	t.Helper()
-
-	logger, rejections, _ := newTestDepsWithLog(t)
-	return logger, rejections
-}
-
 // newTestDepsWithLog also gives the path of the file that receives the log.
 func newTestDepsWithLog(t *testing.T) (*log.Logger, *reject.Stats[rejection.Reason], string) {
 	t.Helper()
