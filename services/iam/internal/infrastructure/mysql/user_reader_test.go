@@ -55,7 +55,7 @@ func Test_UserReader_Get(t *testing.T) {
 	selectQuery := strings.Join([]string{
 		"SELECT users.id,users.external_id,users.username,users.password_hash,users.phone_hash,users.phone_tail,users.state,COUNT(devices.id) AS num_devices,users.created_at,users.updated_at",
 		"FROM `users`",
-		"LEFT JOIN devices ON users.id = devices.user_id",
+		"LEFT JOIN devices ON users.id = devices.user_id AND devices.deleted_at IS NULL",
 		"WHERE users.id = ?",
 		"GROUP BY `users`.`id`",
 		"LIMIT ?",
@@ -117,7 +117,7 @@ func Test_UserReader_Get(t *testing.T) {
 						strings.Join([]string{
 							"SELECT users.id,users.external_id,users.username,users.password_hash,users.phone_hash,users.phone_tail,users.state,COUNT(devices.id) AS num_devices,users.created_at,users.updated_at",
 							"FROM `users`",
-							"LEFT JOIN devices ON users.id = devices.user_id",
+							"LEFT JOIN devices ON users.id = devices.user_id AND devices.deleted_at IS NULL",
 							"WHERE users.id = ?",
 							"GROUP BY `users`.`id`",
 							"LIMIT ? FOR UPDATE",
@@ -222,12 +222,12 @@ func Test_UserReader_Get(t *testing.T) {
 				return err
 			})
 			if (err != nil) != tc.wantErr {
-				t.Errorf("[datastore] userReader.Read error = %v, wantErr %v", err, tc.wantErr)
+				t.Errorf("[datastore] userReader.Get error = %v, wantErr %v", err, tc.wantErr)
 			}
 
 			diff := cmp.Diff(ret, tc.expected)
 			if diff != "" {
-				t.Errorf("[datastore] userReader.Read value is mismatch (-actual +expected):n%s", diff)
+				t.Errorf("[datastore] userReader.Get value is mismatch (-actual +expected):n%s", diff)
 			}
 		})
 	}

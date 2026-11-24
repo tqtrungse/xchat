@@ -70,7 +70,7 @@ func (ur *UserReader) Get(dbCtx context.Context, userID user.ID, locking bool) (
 			"users.created_at",
 			"users.updated_at",
 		}).
-		Joins("LEFT JOIN devices ON users.id = devices.user_id").
+		Joins("LEFT JOIN devices ON users.id = devices.user_id AND devices.deleted_at IS NULL").
 		Where("users.id = ?", userID).
 		Group("users.id").
 		Take(&record).
