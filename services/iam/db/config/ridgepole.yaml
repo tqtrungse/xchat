@@ -1,7 +1,7 @@
 test:
   adapter: mysql2
   host: host.docker.internal
-  port: 9996
+  port: 9999
   database: xchat_test
   username: test
   password: test123456789
@@ -9,7 +9,7 @@ test:
 local:
   adapter: mysql2
   host: host.docker.internal
-  port: 9996
+  port: 9999
   database: xchat_local
   username: xchat
   password: xchat123456789
