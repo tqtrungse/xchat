@@ -12,7 +12,7 @@ import (
 
 const (
 	Protocol         = "Noise_NK_25519_ChaChaPoly_SHA256"
-	WireVersion      = uint8(2)
+	WireVersion      = uint8(1)
 	MaxAudienceBytes = 128
 	MaxAddressBytes  = 255
 )

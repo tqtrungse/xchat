@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"xchat/services/internal/shared/crypto"
+	"xchat/services/internal/shared/hub"
 	"xchat/services/internal/shared/ticket"
 	"xchat/services/internal/shared/ticket/tickettest"
 
@@ -29,7 +30,7 @@ func TestTicketValidatesPublicClaims(t *testing.T) {
 		func(t *ticket.Info) { t.IdentityPub = [ed25519.PublicKeySize]byte{1} },
 		func(t *ticket.Info) { t.HubPublicKey = [crypto.X25519PublicKeySize]byte{} },
 		func(t *ticket.Info) { t.HubKeyID = 0 },
-		func(t *ticket.Info) { t.HubWireVersion = 1 },
+		func(t *ticket.Info) { t.HubWireVersion = hub.WireVersion + 1 },
 		func(t *ticket.Info) { t.HubAudience = "" },
 	} {
 		meta := tickettest.New()

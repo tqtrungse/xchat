@@ -238,7 +238,7 @@ func TestIssueDeviceTicketSuccess(t *testing.T) {
 	require.Equal(t, nethttp.StatusOK, recorder.Code)
 	require.JSONEq(
 		t,
-		`{
+		fmt.Sprintf(`{
 			"ticket": "AQID",
 			"hub": {
 				"address": "hub.example.com:443",
@@ -246,9 +246,9 @@ func TestIssueDeviceTicketSuccess(t *testing.T) {
 				"key_id": 7,
 				"public_key": "BAUG",
 				"protocol": "Noise_NK_25519_ChaChaPoly_SHA256",
-				"version": 2
+				"version": %d
 			}
-		}`,
+		}`, hub.WireVersion),
 		recorder.Body.String(),
 	)
 	require.Equal(t, httpx.ContentTypeJSON, recorder.Header().Get("Content-Type"))
