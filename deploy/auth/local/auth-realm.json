@@ -34,7 +34,7 @@
           "consentRequired": false,
           "config": {
             "user.attribute": "user_id",
-            "claim.name": "user_id",
+            "claim.name": "ext.user_id",
             "jsonType.label": "String",
             "id.token.claim": "false",
             "access.token.claim": "true",

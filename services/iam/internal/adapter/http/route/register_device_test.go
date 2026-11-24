@@ -143,7 +143,7 @@ type registerDeviceFixture struct {
 // middleware runs after the one that sets the claims, and before the handler.
 func newRegisterDeviceFixture(
 	t *testing.T,
-	claims *jwt.Claims,
+	claims *jwt.ExtClaims[httpx.Claims],
 	middleware ...gin.HandlerFunc,
 ) *registerDeviceFixture {
 	t.Helper()
@@ -155,7 +155,7 @@ func newRegisterDeviceFixture(
 func newRegisterDeviceFixtureWithTimeout(
 	t *testing.T,
 	timeout time.Duration,
-	claims *jwt.Claims,
+	claims *jwt.ExtClaims[httpx.Claims],
 	middleware ...gin.HandlerFunc,
 ) *registerDeviceFixture {
 	t.Helper()
@@ -234,7 +234,7 @@ func (f *registerDeviceFixture) requireRejections(t *testing.T, want map[rejecti
 }
 
 func TestRegisterDeviceSuccess(t *testing.T) {
-	f := newRegisterDeviceFixture(t, &jwt.Claims{UserID: "42"})
+	f := newRegisterDeviceFixture(t, testToken("42"))
 	f.expectRegister(
 		func(req *register.Request) {
 			require.Equal(t, "alice", req.Username)
@@ -258,7 +258,7 @@ func TestRegisterDeviceSuccess(t *testing.T) {
 func TestRegisterDeviceRejectsRequest(t *testing.T) {
 	for _, test := range []struct {
 		name           string
-		claims         *jwt.Claims
+		claims         *jwt.ExtClaims[httpx.Claims]
 		body           string
 		wantStatus     int
 		wantJSON       string
@@ -276,7 +276,7 @@ func TestRegisterDeviceRejectsRequest(t *testing.T) {
 		},
 		{
 			name:       "empty user id",
-			claims:     &jwt.Claims{},
+			claims:     &jwt.ExtClaims[httpx.Claims]{},
 			body:       validRegisterDeviceBody,
 			wantStatus: nethttp.StatusUnauthorized,
 			wantJSON:   `{"error":"invalid_token","error_description":"failed to verify token"}`,
@@ -286,7 +286,7 @@ func TestRegisterDeviceRejectsRequest(t *testing.T) {
 		},
 		{
 			name:       "user id is not a number",
-			claims:     &jwt.Claims{UserID: "auth0|42"},
+			claims:     testToken("auth0|42"),
 			body:       validRegisterDeviceBody,
 			wantStatus: nethttp.StatusUnauthorized,
 			wantJSON:   `{"error":"invalid_token","error_description":"failed to verify token"}`,
@@ -296,7 +296,7 @@ func TestRegisterDeviceRejectsRequest(t *testing.T) {
 		},
 		{
 			name:       "user id is zero",
-			claims:     &jwt.Claims{UserID: "0"},
+			claims:     testToken("0"),
 			body:       validRegisterDeviceBody,
 			wantStatus: nethttp.StatusUnauthorized,
 			wantJSON:   `{"error":"invalid_token","error_description":"failed to verify token"}`,
@@ -306,7 +306,7 @@ func TestRegisterDeviceRejectsRequest(t *testing.T) {
 		},
 		{
 			name:       "malformed json",
-			claims:     &jwt.Claims{UserID: "42"},
+			claims:     testToken("42"),
 			body:       `{"username":`,
 			wantStatus: nethttp.StatusBadRequest,
 			wantJSON:   `{"error":"invalid_request_body","error_description":"invalid request body"}`,
@@ -316,7 +316,7 @@ func TestRegisterDeviceRejectsRequest(t *testing.T) {
 		},
 		{
 			name:       "body is too large",
-			claims:     &jwt.Claims{UserID: "42"},
+			claims:     testToken("42"),
 			body:       `{"username":"` + strings.Repeat("a", maxRegisterDeviceBodyBytes) + `"}`,
 			wantStatus: nethttp.StatusRequestEntityTooLarge,
 			wantJSON:   `{"error":"request_too_large","error_description":"request body is too large"}`,
@@ -378,7 +378,7 @@ func TestRegisterDeviceUsecaseErrors(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			f := newRegisterDeviceFixture(t, &jwt.Claims{UserID: "42"})
+			f := newRegisterDeviceFixture(t, testToken("42"))
 			f.expectRegister(nil, nil, test.err)
 
 			recorder := f.post(validRegisterDeviceBody)
@@ -440,7 +440,7 @@ func TestRegisterDeviceResponseWriteFailure(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			f := newRegisterDeviceFixture(t, &jwt.Claims{UserID: "42"}, failWrites(test.err))
+			f := newRegisterDeviceFixture(t, testToken("42"), failWrites(test.err))
 			f.expectRegister(nil, &register.Response{DeviceID: "dev-1"}, nil)
 
 			f.post(validRegisterDeviceBody)
@@ -476,7 +476,7 @@ func TestRegisterDeviceUsecaseDeadline(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			f := newRegisterDeviceFixtureWithTimeout(t, test.timeout, &jwt.Claims{UserID: "42"})
+			f := newRegisterDeviceFixtureWithTimeout(t, test.timeout, testToken("42"))
 
 			var usecaseCtx context.Context
 			f.usecase.EXPECT().

@@ -26,10 +26,6 @@ import (
 const (
 	clockSkew = 30 * time.Second
 
-	// jwksRequestTimeout limits each request to the JWKS endpoint. It also
-	// limits the startup time when the endpoint does not answer.
-	jwksRequestTimeout = 10 * time.Second
-
 	// jwksRefreshInterval is the interval between two refreshes of a JWKS
 	// that has keys.
 	jwksRefreshInterval = 15 * time.Minute
@@ -38,32 +34,7 @@ const (
 	// for the refresh rate limiter. The keyfunc default is one minute. That
 	// default blocks the request.
 	jwksRateLimitWaitMax = time.Second
-
-	// jwksRetryMin and jwksRetryMax are the base and the cap of the
-	// decorrelated jitter backoff. The backoff occurs between two fetches
-	// while the JWKS has no key.
-	jwksRetryMin = 1 * time.Second
-	jwksRetryMax = 30 * time.Second
 )
-
-type AuthConfig struct {
-	Issuer   string
-	Audience string
-	JWKSURL  string
-}
-
-// options holds the settings that a test can change.
-type options struct {
-	requestTimeout time.Duration
-	retryMin       time.Duration
-	retryMax       time.Duration
-}
-
-var defaultOptions = options{
-	requestTimeout: jwksRequestTimeout,
-	retryMin:       jwksRetryMin,
-	retryMax:       jwksRetryMax,
-}
 
 type verifier struct {
 	jwks keyfunc.Keyfunc
@@ -71,7 +42,7 @@ type verifier struct {
 	cancel context.CancelFunc
 }
 
-type auth struct {
+type auth[T any] struct {
 	current atomic.Pointer[verifier]
 	config  AuthConfig
 	logger  *log.Logger
@@ -79,15 +50,63 @@ type auth struct {
 }
 
 // NewAuth gives an Auth that verifies tokens with the keys of the JWKS at
-// config.JWKSURL. NewAuth waits no more than the request timeout for the
-// first fetch. If the first fetch fails, NewAuth logs the error and retries
-// in the background. Ready reports false until the JWKS has a key. A canceled
-// ctx stops the retry.
-func NewAuth(ctx context.Context, config AuthConfig, logger *log.Logger) (Auth, error) {
-	return newAuth(ctx, config, logger, defaultOptions)
+// config.JWKSURL. Verify decodes the "ext" claim of each token into a T.
+// NewAuth waits no more than the request timeout for the first fetch. If the
+// first fetch fails, NewAuth logs the error and retries in the background.
+// Ready reports false until the JWKS has a key. A canceled ctx stops the
+// retry.
+func NewAuth[T any](
+	ctx context.Context,
+	config AuthConfig,
+	logger *log.Logger,
+) (Auth[T], error) {
+	return newAuth[T](ctx, config, logger, defaultOptions)
 }
 
-func newAuth(ctx context.Context, config AuthConfig, logger *log.Logger, opts options) (Auth, error) {
+// Verify checks the token and decodes its claims into a new ExtClaims.
+// It returns ErrTokenInvalid if the token is not valid. This includes a claim
+// that does not decode into its field, for example a string in a number field
+// of T.
+func (a *auth[T]) Verify(token string) (*ExtClaims[T], error) {
+	claims := new(ExtClaims[T])
+	v := a.current.Load()
+	tk, err := jwt.ParseWithClaims(
+		token,
+		claims,
+		v.jwks.Keyfunc,
+		// Force signature algorithm to prevent algorithm confusion attacks.
+		jwt.WithValidMethods([]string{"RS256"}),
+		jwt.WithIssuer(a.config.Issuer),
+		jwt.WithAudience(a.config.Audience),
+		jwt.WithExpirationRequired(),
+		jwt.WithLeeway(clockSkew),
+	)
+	if err != nil {
+		// A keyfunc failure with no key in the storage means that the JWKS is
+		// not available. All other failures mean that the token is not valid.
+		if errors.Is(err, jwt.ErrTokenUnverifiable) && !a.ready(v) {
+			return nil, fmt.Errorf("%w: %w", ErrVerifierUnavailable, err)
+		}
+		return nil, fmt.Errorf("%w: %w", ErrTokenInvalid, err)
+	}
+	if !tk.Valid {
+		return nil, ErrTokenInvalid
+	}
+	return claims, nil
+}
+
+// Ready reports whether the verifier has at least one verification key. A
+// deployment can call Ready before it sends traffic to this service.
+func (a *auth[T]) Ready() bool {
+	return a.ready(a.current.Load())
+}
+
+func newAuth[T any](
+	ctx context.Context,
+	config AuthConfig,
+	logger *log.Logger,
+	opts options,
+) (Auth[T], error) {
 	// These checks do not depend on the config layer. They keep the
 	// invariant of this package: an Auth has each OIDC setting.
 	if config.Issuer == "" {
@@ -115,7 +134,7 @@ func newAuth(ctx context.Context, config AuthConfig, logger *log.Logger, opts op
 		return nil, fmt.Errorf("invalid JWKS retry delay: %w", err)
 	}
 
-	a := &auth{
+	a := &auth[T]{
 		config:  config,
 		logger:  logger.Component("jwt").With(zap.String("jwks_url", config.JWKSURL)),
 		options: opts,
@@ -136,7 +155,7 @@ func newAuth(ctx context.Context, config AuthConfig, logger *log.Logger, opts op
 // newVerifier creates a JWKS client. If strict is true, newVerifier returns an
 // error when the first fetch fails. Otherwise, newVerifier writes the error to
 // the log.
-func (a *auth) newVerifier(ctx context.Context, strict bool) (*verifier, error) {
+func (a *auth[T]) newVerifier(ctx context.Context, strict bool) (*verifier, error) {
 	verifierCtx, cancel := context.WithCancel(ctx)
 	noErr := !strict
 	jwks, err := keyfunc.NewDefaultOverrideCtx(
@@ -166,7 +185,7 @@ func (a *auth) newVerifier(ctx context.Context, strict bool) (*verifier, error) 
 // cancels the request context before it calls the handler for the first fetch
 // and for a periodic refresh. Therefore, the handler checks verifierCtx. The
 // verifier cancels this context only when it stops.
-func (a *auth) refreshErrorHandler(verifierCtx context.Context) func(string) func(context.Context, error) {
+func (a *auth[T]) refreshErrorHandler(verifierCtx context.Context) func(string) func(context.Context, error) {
 	return func(string) func(context.Context, error) {
 		return func(_ context.Context, err error) {
 			if verifierCtx.Err() != nil {
@@ -177,46 +196,12 @@ func (a *auth) refreshErrorHandler(verifierCtx context.Context) func(string) fun
 	}
 }
 
-func (a *auth) Verify(token string) (*Claims, error) {
-	claims := new(Claims)
-	v := a.current.Load()
-	tk, err := jwt.ParseWithClaims(
-		token,
-		claims,
-		v.jwks.Keyfunc,
-		// Force signature algorithm to prevent algorithm confusion attacks.
-		jwt.WithValidMethods([]string{"RS256"}),
-		jwt.WithIssuer(a.config.Issuer),
-		jwt.WithAudience(a.config.Audience),
-		jwt.WithExpirationRequired(),
-		jwt.WithLeeway(clockSkew),
-	)
-	if err != nil {
-		// A keyfunc failure with no key in the storage means that the JWKS is
-		// not available. All other failures mean that the token is not valid.
-		if errors.Is(err, jwt.ErrTokenUnverifiable) && !a.ready(v) {
-			return nil, fmt.Errorf("%w: %w", ErrVerifierUnavailable, err)
-		}
-		return nil, fmt.Errorf("%w: %w", ErrTokenInvalid, err)
-	}
-	if !tk.Valid {
-		return nil, ErrTokenInvalid
-	}
-	return claims, nil
-}
-
-// Ready reports whether the verifier has at least one verification key. A
-// deployment can call Ready before it sends traffic to this service.
-func (a *auth) Ready() bool {
-	return a.ready(a.current.Load())
-}
-
 // retryUntilReady creates a new verifier until one has a key. Then it
 // replaces the current verifier with the new one. The delay value sets the
 // wait between two attempts. The wait increases to retryMax and has jitter.
 // The jitter prevents all pods of a deployment from fetching the JWKS at the
 // same time. Only this goroutine uses delay.
-func (a *auth) retryUntilReady(ctx context.Context, v *verifier, delay *jitter.Delay) {
+func (a *auth[T]) retryUntilReady(ctx context.Context, v *verifier, delay *jitter.Delay) {
 	wait := delay.Next()
 	for attempt := 1; !a.ready(v); attempt++ {
 		select {
@@ -246,7 +231,7 @@ func (a *auth) retryUntilReady(ctx context.Context, v *verifier, delay *jitter.D
 	a.logger.Info("JWKS is ready")
 }
 
-func (a *auth) ready(v *verifier) bool {
+func (a *auth[T]) ready(v *verifier) bool {
 	keys, err := v.jwks.Storage().KeyReadAll(context.Background())
 	if err != nil {
 		return false

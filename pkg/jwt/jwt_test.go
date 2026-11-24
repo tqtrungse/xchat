@@ -46,6 +46,77 @@ func TestVerifyValidToken(t *testing.T) {
 	require.Equal(t, "user-1", claims.Subject)
 }
 
+// testExtension holds the private claims of a test service. This package does
+// not know them.
+type testExtension struct {
+	PhoneTail *uint16 `json:"phone_tail,omitempty"`
+}
+
+// testServiceToken holds the claims of a test token with an "ext" claim. The
+// ext claim has the type any, so that a test can give it a wrong type.
+type testServiceToken struct {
+	jwtlib.RegisteredClaims
+	Scope     string `json:"scope"`
+	Extension any    `json:"ext,omitempty"`
+}
+
+func TestVerifyExtension(t *testing.T) {
+	privateKey := newTestKey(t)
+	server := newJWKSServer(t, jwksBody(t, privateKey, testKeyID))
+	logger, closeLogger, _ := logtest.New(t, log.Config{})
+	t.Cleanup(func() { require.NoError(t, closeLogger()) })
+
+	testAuth, err := newAuth[testExtension](t.Context(), testAuthConfig(server.URL), logger, testOptions)
+	require.NoError(t, err)
+
+	t.Run("ext claim decodes into the extension", func(t *testing.T) {
+		token := signTestClaims(t, privateKey, testKeyID, testServiceToken{
+			RegisteredClaims: testClaims(time.Now()),
+			Scope:            "device:register",
+			Extension: map[string]any{
+				"phone_tail": 567,
+				"unknown":    "ignored",
+			},
+		})
+
+		claims, err := testAuth.Verify(token)
+		require.NoError(t, err)
+		require.Equal(t, "user-1", claims.Subject)
+		require.Equal(t, "device:register", claims.Scope)
+		require.NotNil(t, claims.Extension.PhoneTail)
+		require.Equal(t, uint16(567), *claims.Extension.PhoneTail)
+	})
+
+	t.Run("missing ext claim", func(t *testing.T) {
+		claims, err := testAuth.Verify(signTestToken(t, privateKey, testKeyID))
+		require.NoError(t, err)
+		require.Equal(t, testExtension{}, claims.Extension)
+	})
+
+	t.Run("private claim with a wrong type", func(t *testing.T) {
+		token := signTestClaims(t, privateKey, testKeyID, testServiceToken{
+			RegisteredClaims: testClaims(time.Now()),
+			Extension: map[string]any{
+				"phone_tail": "567",
+			},
+		})
+
+		_, err := testAuth.Verify(token)
+		require.ErrorIs(t, err, ErrTokenInvalid)
+		require.NotErrorIs(t, err, ErrVerifierUnavailable)
+	})
+
+	t.Run("ext claim that is not an object", func(t *testing.T) {
+		token := signTestClaims(t, privateKey, testKeyID, testServiceToken{
+			RegisteredClaims: testClaims(time.Now()),
+			Extension:        "phone_tail=567",
+		})
+
+		_, err := testAuth.Verify(token)
+		require.ErrorIs(t, err, ErrTokenInvalid)
+	})
+}
+
 func TestVerifyInvalidSignature(t *testing.T) {
 	servedKey := newTestKey(t)
 	otherKey := newTestKey(t)
@@ -131,7 +202,7 @@ func TestNewAuthStopsRetryOnCancel(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, closeLogger()) })
 
 	ctx, cancel := context.WithCancel(t.Context())
-	testAuth, err := newAuth(ctx, testAuthConfig(server.URL), logger, testOptions)
+	testAuth, err := newAuth[noExtension](ctx, testAuthConfig(server.URL), logger, testOptions)
 	require.NoError(t, err)
 	require.Eventually(t, func() bool { return requests.Load() >= 2 }, 5*time.Second, 10*time.Millisecond)
 
@@ -204,13 +275,13 @@ func TestNewAuthRequiredFields(t *testing.T) {
 			logger, closeLogger, _ := logtest.New(t, log.Config{})
 			t.Cleanup(func() { require.NoError(t, closeLogger()) })
 
-			_, err := NewAuth(t.Context(), test.config, logger)
+			_, err := NewAuth[noExtension](t.Context(), test.config, logger)
 			require.ErrorIs(t, err, test.wantError)
 		})
 	}
 
 	t.Run("missing logger", func(t *testing.T) {
-		_, err := NewAuth(t.Context(), testAuthConfig("https://issuer.example/jwks"), nil)
+		_, err := NewAuth[noExtension](t.Context(), testAuthConfig("https://issuer.example/jwks"), nil)
 		require.ErrorIs(t, err, ErrLoggerRequired)
 	})
 }
@@ -299,7 +370,7 @@ func TestNewAuthRejectsInsecureIssuer(t *testing.T) {
 	config := testAuthConfig("https://issuer.example/jwks")
 	config.Issuer = "http://issuer.example"
 
-	_, err := NewAuth(t.Context(), config, logger)
+	_, err := NewAuth[noExtension](t.Context(), config, logger)
 	require.ErrorIs(t, err, ErrIssuerInsecure)
 }
 
@@ -307,7 +378,7 @@ func TestNewAuthRejectsInsecureJWKSURL(t *testing.T) {
 	logger, closeLogger, _ := logtest.New(t, log.Config{})
 	t.Cleanup(func() { require.NoError(t, closeLogger()) })
 
-	_, err := NewAuth(t.Context(), testAuthConfig("http://issuer.example/jwks"), logger)
+	_, err := NewAuth[noExtension](t.Context(), testAuthConfig("http://issuer.example/jwks"), logger)
 	require.ErrorIs(t, err, ErrJWKSURLInsecure)
 }
 
@@ -363,6 +434,10 @@ type logEntry struct {
 	Message string `json:"msg"`
 }
 
+// noExtension is the extension type of the tests that do not read private
+// claims.
+type noExtension struct{}
+
 func testAuthConfig(jwksURL string) AuthConfig {
 	return AuthConfig{
 		Issuer:   testIssuer,
@@ -371,7 +446,7 @@ func testAuthConfig(jwksURL string) AuthConfig {
 	}
 }
 
-func newTestAuth(t *testing.T, jwksURL string) Auth {
+func newTestAuth(t *testing.T, jwksURL string) Auth[noExtension] {
 	t.Helper()
 
 	testAuth, _ := newTestAuthWithLog(t, jwksURL, testOptions)
@@ -380,13 +455,13 @@ func newTestAuth(t *testing.T, jwksURL string) Auth {
 
 // newTestAuthWithLog gives an Auth and a function that reads the log entries
 // of that Auth.
-func newTestAuthWithLog(t *testing.T, jwksURL string, opts options) (Auth, func() []logEntry) {
+func newTestAuthWithLog(t *testing.T, jwksURL string, opts options) (Auth[noExtension], func() []logEntry) {
 	t.Helper()
 
 	logger, closeLogger, path := logtest.New(t, log.Config{})
 	t.Cleanup(func() { require.NoError(t, closeLogger()) })
 
-	testAuth, err := newAuth(t.Context(), testAuthConfig(jwksURL), logger, opts)
+	testAuth, err := newAuth[noExtension](t.Context(), testAuthConfig(jwksURL), logger, opts)
 	require.NoError(t, err)
 
 	entries := func() []logEntry {
@@ -487,7 +562,7 @@ func signTestClaims(
 	t *testing.T,
 	privateKey *rsa.PrivateKey,
 	keyID string,
-	claims jwtlib.RegisteredClaims,
+	claims jwtlib.Claims,
 ) string {
 	t.Helper()
 

@@ -143,7 +143,7 @@ type issueDeviceTicketFixture struct {
 // middleware runs after the one that sets the claims, and before the handler.
 func newIssueDeviceTicketFixture(
 	t *testing.T,
-	claims *jwt.Claims,
+	claims *jwt.ExtClaims[httpx.Claims],
 	middleware ...gin.HandlerFunc,
 ) *issueDeviceTicketFixture {
 	t.Helper()
@@ -155,7 +155,7 @@ func newIssueDeviceTicketFixture(
 func newIssueDeviceTicketFixtureWithTimeout(
 	t *testing.T,
 	timeout time.Duration,
-	claims *jwt.Claims,
+	claims *jwt.ExtClaims[httpx.Claims],
 	middleware ...gin.HandlerFunc,
 ) *issueDeviceTicketFixture {
 	t.Helper()
@@ -230,7 +230,7 @@ func (f *issueDeviceTicketFixture) requireRejections(t *testing.T, want map[reje
 func TestIssueDeviceTicketSuccess(t *testing.T) {
 	resp := newTestTicketResponse()
 	ticketBytes := resp.Ticket
-	f := newIssueDeviceTicketFixture(t, &jwt.Claims{UserID: "42"})
+	f := newIssueDeviceTicketFixture(t, testToken("42"))
 	f.expectIssueTicket(resp, nil)
 
 	recorder := f.post(validIssueDeviceTicketBody)
@@ -265,7 +265,7 @@ func TestIssueDeviceTicketSuccess(t *testing.T) {
 func TestIssueDeviceTicketRejectsRequest(t *testing.T) {
 	for _, test := range []struct {
 		name           string
-		claims         *jwt.Claims
+		claims         *jwt.ExtClaims[httpx.Claims]
 		body           string
 		wantStatus     int
 		wantJSON       string
@@ -283,7 +283,7 @@ func TestIssueDeviceTicketRejectsRequest(t *testing.T) {
 		},
 		{
 			name:       "empty user id",
-			claims:     &jwt.Claims{},
+			claims:     &jwt.ExtClaims[httpx.Claims]{},
 			body:       validIssueDeviceTicketBody,
 			wantStatus: nethttp.StatusUnauthorized,
 			wantJSON:   `{"error":"invalid_token","error_description":"failed to verify token"}`,
@@ -293,7 +293,7 @@ func TestIssueDeviceTicketRejectsRequest(t *testing.T) {
 		},
 		{
 			name:       "user id is zero",
-			claims:     &jwt.Claims{UserID: "0"},
+			claims:     testToken("0"),
 			body:       validIssueDeviceTicketBody,
 			wantStatus: nethttp.StatusUnauthorized,
 			wantJSON:   `{"error":"invalid_token","error_description":"failed to verify token"}`,
@@ -303,7 +303,7 @@ func TestIssueDeviceTicketRejectsRequest(t *testing.T) {
 		},
 		{
 			name:       "malformed json",
-			claims:     &jwt.Claims{UserID: "42"},
+			claims:     testToken("42"),
 			body:       `{"device_id":`,
 			wantStatus: nethttp.StatusBadRequest,
 			wantJSON:   `{"error":"invalid_request_body","error_description":"invalid request body"}`,
@@ -313,7 +313,7 @@ func TestIssueDeviceTicketRejectsRequest(t *testing.T) {
 		},
 		{
 			name:       "body is too large",
-			claims:     &jwt.Claims{UserID: "42"},
+			claims:     testToken("42"),
 			body:       `{"device_id":"` + strings.Repeat("1", maxIssueDeviceTicketBodyBytes) + `"}`,
 			wantStatus: nethttp.StatusRequestEntityTooLarge,
 			wantJSON:   `{"error":"request_too_large","error_description":"request body is too large"}`,
@@ -381,7 +381,7 @@ func TestIssueDeviceTicketUsecaseErrors(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			f := newIssueDeviceTicketFixture(t, &jwt.Claims{UserID: "42"})
+			f := newIssueDeviceTicketFixture(t, testToken("42"))
 			f.expectIssueTicket(nil, test.err)
 
 			recorder := f.post(validIssueDeviceTicketBody)
@@ -415,7 +415,7 @@ func TestIssueDeviceTicketUsecaseDeadline(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			f := newIssueDeviceTicketFixtureWithTimeout(t, test.timeout, &jwt.Claims{UserID: "42"})
+			f := newIssueDeviceTicketFixtureWithTimeout(t, test.timeout, testToken("42"))
 
 			var usecaseCtx context.Context
 			f.usecase.EXPECT().
@@ -444,7 +444,7 @@ func TestIssueDeviceTicketUsecaseDeadline(t *testing.T) {
 }
 
 func TestIssueDeviceTicketNilResponse(t *testing.T) {
-	f := newIssueDeviceTicketFixture(t, &jwt.Claims{UserID: "42"})
+	f := newIssueDeviceTicketFixture(t, testToken("42"))
 	f.expectIssueTicket(nil, nil)
 
 	recorder := f.post(validIssueDeviceTicketBody)
@@ -484,7 +484,7 @@ func TestIssueDeviceTicketResponseWriteFailure(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			resp := newTestTicketResponse()
 			ticketBytes := resp.Ticket
-			f := newIssueDeviceTicketFixture(t, &jwt.Claims{UserID: "42"}, failWrites(test.err))
+			f := newIssueDeviceTicketFixture(t, testToken("42"), failWrites(test.err))
 			f.expectIssueTicket(resp, nil)
 
 			f.post(validIssueDeviceTicketBody)

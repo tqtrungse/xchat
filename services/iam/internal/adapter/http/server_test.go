@@ -157,8 +157,10 @@ func TestServerServesHTTPS(t *testing.T) {
 }
 
 func TestAuthenticate(t *testing.T) {
-	validClaims := &jwt.Claims{
-		Scope: "read",
+	validClaims := &jwt.ExtClaims[httpx.Claims]{
+		StdClaims: jwt.StdClaims{
+			Scope: "read",
+		},
 	}
 
 	for _, test := range []struct {
@@ -166,7 +168,7 @@ func TestAuthenticate(t *testing.T) {
 		setHeader     bool
 		authorization string
 		verifyToken   string
-		verifyClaims  *jwt.Claims
+		verifyClaims  *jwt.ExtClaims[httpx.Claims]
 		verifyError   error
 		wantStatus    int
 		wantHeader    string
@@ -241,7 +243,7 @@ func TestAuthenticate(t *testing.T) {
 			server := newTestServer(t, auth)
 
 			handlerCalled := false
-			var handlerClaims *jwt.Claims
+			var handlerClaims *jwt.ExtClaims[httpx.Claims]
 			server.APIGroup().GET("/ping", func(c *gin.Context) {
 				handlerCalled = true
 				claims, exists := httpx.ClaimsFromContext(c)
@@ -311,7 +313,7 @@ func TestRequestLoggerWritesEntry(t *testing.T) {
 	rejections := reject.New[rejection.Reason](logger, time.Hour, rejection.Names())
 
 	auth := newMockAuth(t)
-	auth.EXPECT().Verify("good-token").Return(&jwt.Claims{}, nil)
+	auth.EXPECT().Verify("good-token").Return(&jwt.ExtClaims[httpx.Claims]{}, nil)
 
 	server, err := buildServer(testServerConfig(), auth, logger, rejections)
 	require.NoError(t, err)
@@ -340,7 +342,7 @@ func TestRecoverPanicWritesEntry(t *testing.T) {
 	rejections := reject.New[rejection.Reason](logger, time.Hour, rejection.Names())
 
 	auth := newMockAuth(t)
-	auth.EXPECT().Verify("good-token").Return(&jwt.Claims{}, nil)
+	auth.EXPECT().Verify("good-token").Return(&jwt.ExtClaims[httpx.Claims]{}, nil)
 
 	server, err := buildServer(testServerConfig(), auth, logger, rejections)
 	require.NoError(t, err)
@@ -560,9 +562,9 @@ func writeTestCertificate(t *testing.T) (string, string) {
 	return certFile, keyFile
 }
 
-func newMockAuth(t *testing.T) *mocks.MockAuth {
+func newMockAuth(t *testing.T) *mocks.MockAuth[httpx.Claims] {
 	t.Helper()
-	return mocks.NewMockAuth(gomock.NewController(t))
+	return mocks.NewMockAuth[httpx.Claims](gomock.NewController(t))
 }
 
 func newTestDeps(t *testing.T) (*log.Logger, *reject.Stats[rejection.Reason]) {
@@ -574,12 +576,12 @@ func newTestDeps(t *testing.T) (*log.Logger, *reject.Stats[rejection.Reason]) {
 	return logger, reject.New[rejection.Reason](logger, time.Hour, rejection.Names())
 }
 
-func newTestServer(t *testing.T, auth jwt.Auth) *Server {
+func newTestServer(t *testing.T, auth jwt.Auth[httpx.Claims]) *Server {
 	t.Helper()
 	return newTestServerWithConfig(t, testServerConfig(), auth)
 }
 
-func newTestServerWithConfig(t *testing.T, config Config, auth jwt.Auth) *Server {
+func newTestServerWithConfig(t *testing.T, config Config, auth jwt.Auth[httpx.Claims]) *Server {
 	t.Helper()
 
 	logger, rejections := newTestDeps(t)
@@ -603,7 +605,7 @@ func (m *stubMounter) Mount(group *gin.RouterGroup) {
 			c.Status(nethttp.StatusInternalServerError)
 			return
 		}
-		c.String(nethttp.StatusOK, claims.UserID)
+		c.String(nethttp.StatusOK, claims.Extension.UserID)
 	})
 }
 
@@ -615,7 +617,7 @@ func TestNewServerRejectsNilRoute(t *testing.T) {
 
 func TestServerMountsRoutesBehindAuthentication(t *testing.T) {
 	auth := newMockAuth(t)
-	auth.EXPECT().Verify("good-token").Return(&jwt.Claims{UserID: "42"}, nil)
+	auth.EXPECT().Verify("good-token").Return(&jwt.ExtClaims[httpx.Claims]{Extension: httpx.Claims{UserID: "42"}}, nil)
 
 	logger, rejections := newTestDeps(t)
 	route := &stubMounter{}
@@ -660,7 +662,7 @@ func TestServerAttachesRealmForRoutes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			auth := newMockAuth(t)
-			auth.EXPECT().Verify("good-token").Return(&jwt.Claims{UserID: "42"}, nil)
+			auth.EXPECT().Verify("good-token").Return(&jwt.ExtClaims[httpx.Claims]{Extension: httpx.Claims{UserID: "42"}}, nil)
 
 			config := testServerConfig()
 			config.BearerRealm = tc.realm

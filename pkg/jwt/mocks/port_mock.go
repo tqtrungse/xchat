@@ -17,31 +17,31 @@ import (
 )
 
 // MockAuth is a mock of Auth interface.
-type MockAuth struct {
+type MockAuth[T any] struct {
 	ctrl     *gomock.Controller
-	recorder *MockAuthMockRecorder
+	recorder *MockAuthMockRecorder[T]
 	isgomock struct{}
 }
 
 // MockAuthMockRecorder is the mock recorder for MockAuth.
-type MockAuthMockRecorder struct {
-	mock *MockAuth
+type MockAuthMockRecorder[T any] struct {
+	mock *MockAuth[T]
 }
 
 // NewMockAuth creates a new mock instance.
-func NewMockAuth(ctrl *gomock.Controller) *MockAuth {
-	mock := &MockAuth{ctrl: ctrl}
-	mock.recorder = &MockAuthMockRecorder{mock}
+func NewMockAuth[T any](ctrl *gomock.Controller) *MockAuth[T] {
+	mock := &MockAuth[T]{ctrl: ctrl}
+	mock.recorder = &MockAuthMockRecorder[T]{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockAuth) EXPECT() *MockAuthMockRecorder {
+func (m *MockAuth[T]) EXPECT() *MockAuthMockRecorder[T] {
 	return m.recorder
 }
 
 // Ready mocks base method.
-func (m *MockAuth) Ready() bool {
+func (m *MockAuth[T]) Ready() bool {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Ready")
 	ret0, _ := ret[0].(bool)
@@ -49,22 +49,22 @@ func (m *MockAuth) Ready() bool {
 }
 
 // Ready indicates an expected call of Ready.
-func (mr *MockAuthMockRecorder) Ready() *gomock.Call {
+func (mr *MockAuthMockRecorder[T]) Ready() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ready", reflect.TypeOf((*MockAuth)(nil).Ready))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ready", reflect.TypeOf((*MockAuth[T])(nil).Ready))
 }
 
 // Verify mocks base method.
-func (m *MockAuth) Verify(token string) (*jwt.Claims, error) {
+func (m *MockAuth[T]) Verify(token string) (*jwt.ExtClaims[T], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Verify", token)
-	ret0, _ := ret[0].(*jwt.Claims)
+	ret0, _ := ret[0].(*jwt.ExtClaims[T])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Verify indicates an expected call of Verify.
-func (mr *MockAuthMockRecorder) Verify(token any) *gomock.Call {
+func (mr *MockAuthMockRecorder[T]) Verify(token any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Verify", reflect.TypeOf((*MockAuth)(nil).Verify), token)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Verify", reflect.TypeOf((*MockAuth[T])(nil).Verify), token)
 }

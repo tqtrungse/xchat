@@ -66,18 +66,32 @@ of a user. The verification occurs on the device:
 IAM stores only a truncated HMAC of the phone number and the last three
 digits. The full phone number stays in Auth0.
 
-### `user_id` claim
+### `ext` claim
 
-An Auth0 Action runs when Auth0 creates a user. The Action adds the `user_id`
-claim to the tokens of the user. The value is the Snowflake ID that IAM uses as
-the primary key of the user.
+The private claims of IAM are in one object, the `ext` claim of the access
+token. An Auth0 Action adds this object. The Keycloak realm for local
+development adds it with the claim name `ext.user_id`.
 
-| Claim     | Value                    |
-| --------- | ------------------------ |
-| `user_id` | Snowflake ID of the user |
+```json
+{
+  "ext": {
+    "user_id": "123456789012345678"
+  }
+}
+```
 
-The Snowflake ID is a 64-bit integer. Use a string for the claim value. A JSON
-number can lose precision above 2^53 in a JavaScript client.
+| Claim         | Value                    |
+| ------------- | ------------------------ |
+| `ext.user_id` | Snowflake ID of the user |
+
+The Snowflake ID is the primary key of the user in IAM. It is a 64-bit
+integer. Use a string for the claim value. A JSON number can lose precision
+above 2^53 in a JavaScript client.
+
+The Action sets the object with one call, for example
+`api.accessToken.setCustomClaim('ext', { user_id: userID })`. Do not confuse
+`ext` with `app_metadata` or `user_metadata` of the Auth0 user. Those stay in
+Auth0. The Action copies only the values that IAM needs into `ext`.
 
 ### Configuration
 

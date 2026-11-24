@@ -15,6 +15,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"xchat/services/iam/internal/adapter/http/httpx"
 	"xchat/services/iam/internal/adapter/http/rejection"
 
 	"xchat/pkg/collection"
@@ -42,7 +43,7 @@ type Mounter interface {
 type Server struct {
 	engine     *gin.Engine
 	httpServer *http.Server
-	auth       jwt.Auth
+	auth       jwt.Auth[httpx.Claims]
 	logger     *log.Logger
 	rejections *reject.Stats[rejection.Reason]
 	public     *gin.RouterGroup
@@ -81,7 +82,7 @@ func NewServer(
 		}
 	}
 
-	auth, err := jwt.NewAuth(
+	auth, err := jwt.NewAuth[httpx.Claims](
 		ctx,
 		jwt.AuthConfig{
 			Issuer:   config.OIDCIssuer,
@@ -108,7 +109,7 @@ func NewServer(
 // and each route must not be nil.
 func buildServer(
 	config Config,
-	auth jwt.Auth,
+	auth jwt.Auth[httpx.Claims],
 	logger *log.Logger,
 	rejections *reject.Stats[rejection.Reason],
 	routes ...Mounter,

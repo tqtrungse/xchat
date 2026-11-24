@@ -13,6 +13,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Claims holds the private claims of IAM. The identity provider puts them in
+// the "ext" claim of the access token.
+type Claims struct {
+	// UserID is the ID of the user in IAM. The identity provider adds it.
+	UserID string `json:"user_id"`
+}
+
 type contextKey uint8
 
 const (
@@ -22,7 +29,7 @@ const (
 
 // SetClaims attaches the claims of the verified token to the request. The
 // authentication middleware calls it.
-func SetClaims(c *gin.Context, claims *jwt.Claims) {
+func SetClaims(c *gin.Context, claims *jwt.ExtClaims[Claims]) {
 	c.Set(claimsContextKey, claims)
 }
 
@@ -32,12 +39,12 @@ func SetClaims(c *gin.Context, claims *jwt.Claims) {
 //
 // Do not read the claims with c.Value. For a key that is not a string, c.Value
 // reads the context of the request, and not the values of c.Set.
-func ClaimsFromContext(c *gin.Context) (*jwt.Claims, bool) {
+func ClaimsFromContext(c *gin.Context) (*jwt.ExtClaims[Claims], bool) {
 	value, exists := c.Get(claimsContextKey)
 	if !exists {
 		return nil, false
 	}
-	claims, exists := value.(*jwt.Claims)
+	claims, exists := value.(*jwt.ExtClaims[Claims])
 	return claims, exists
 }
 
@@ -50,11 +57,11 @@ func ClaimsFromContext(c *gin.Context) (*jwt.Claims, bool) {
 // "042" are the same user. Otherwise, they could create separate quotas.
 func AuthenticatedUserID(c *gin.Context) (userID uint64, ok bool) {
 	claims, ok := ClaimsFromContext(c)
-	if !ok || claims == nil || claims.UserID == "" {
+	if !ok || claims == nil || claims.Extension.UserID == "" {
 		return 0, false
 	}
 
-	userID, err := strconv.ParseUint(claims.UserID, 10, 64)
+	userID, err := strconv.ParseUint(claims.Extension.UserID, 10, 64)
 	if err != nil || userID == 0 {
 		return 0, false
 	}
