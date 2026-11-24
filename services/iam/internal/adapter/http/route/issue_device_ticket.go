@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"xchat/services/iam/internal/adapter/http/httpx"
 	"xchat/services/iam/internal/adapter/http/rejection"
@@ -42,19 +43,23 @@ type DeviceTicketIssuer interface {
 // to connect.
 type IssueDeviceTicketHandler struct {
 	usecase    DeviceTicketIssuer
+	timeout    time.Duration
 	logger     *log.Logger
 	rejections *reject.Stats[rejection.Reason]
 }
 
 // NewIssueDeviceTicketHandler makes a IssueDeviceTicketHandler. The caller must give all
-// arguments.
+// arguments. timeout is the deadline of the use case. A timeout of zero or less
+// disables the deadline.
 func NewIssueDeviceTicketHandler(
 	usecase DeviceTicketIssuer,
+	timeout time.Duration,
 	logger *log.Logger,
 	rejections *reject.Stats[rejection.Reason],
 ) *IssueDeviceTicketHandler {
 	return &IssueDeviceTicketHandler{
 		usecase:    usecase,
+		timeout:    timeout,
 		logger:     logger,
 		rejections: rejections,
 	}
@@ -79,7 +84,10 @@ func (h *IssueDeviceTicketHandler) handle(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.usecase.IssueTicket(c.Request.Context(), user.ID(userID), req)
+	ctx, cancel := withTimeout(c.Request.Context(), h.timeout)
+	defer cancel()
+
+	resp, err := h.usecase.IssueTicket(ctx, user.ID(userID), req)
 	if err != nil {
 		respondUsecaseFailure(
 			c,
@@ -149,6 +157,14 @@ func mapIssueDeviceTicketError(err error) usecaseFailure {
 			status:      http.StatusForbidden,
 			code:        "device_inactive",
 			description: issueticket.ErrDeviceInactive.Error(),
+		}
+
+	case errors.Is(err, issueticket.ErrBusy):
+		return usecaseFailure{
+			status:      http.StatusServiceUnavailable,
+			code:        "busy",
+			description: issueticket.ErrBusy.Error(),
+			retryAfter:  retryAfterBusySeconds,
 		}
 
 	case errors.Is(err, issueticket.ErrInternal):

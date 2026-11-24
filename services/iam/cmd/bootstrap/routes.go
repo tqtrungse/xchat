@@ -65,6 +65,8 @@ func buildRoutes(
 		return nil, nil, fmt.Errorf("failed to load the hub descriptor: %w", err)
 	}
 
+	routeConfig := route.LoadConfig(loader)
+
 	db := sql.NewMySql(logger)
 	closeDB, err := db.Open(ctx, dbConfig)
 	if err != nil {
@@ -100,7 +102,12 @@ func buildRoutes(
 		&userWriter,
 		&deviceWriter,
 	)
-	registerDeviceHandler := route.NewRegisterDeviceHandler(registerDeviceUsecase, logger, rejections)
+	registerDeviceHandler := route.NewRegisterDeviceHandler(
+		registerDeviceUsecase,
+		routeConfig.RegisterDeviceTimeout,
+		logger,
+		rejections,
+	)
 
 	// loadHubEndpoint validates the descriptor. The use case shares its public
 	// key bytes with each response, and nothing changes them after this point.
@@ -111,7 +118,12 @@ func buildRoutes(
 		ticketSigner,
 		*hubDescriptor,
 	)
-	issueDeviceTicketHandler := route.NewIssueDeviceTicketHandler(issueTicketUsecase, logger, rejections)
+	issueDeviceTicketHandler := route.NewIssueDeviceTicketHandler(
+		issueTicketUsecase,
+		routeConfig.IssueDeviceTicketTimeout,
+		logger,
+		rejections,
+	)
 
 	return []iamhttp.Mounter{registerDeviceHandler, issueDeviceTicketHandler}, closeDB, nil
 }

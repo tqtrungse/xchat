@@ -195,14 +195,15 @@ func TestIssueRejectsDevice(t *testing.T) {
 	}
 }
 
-// TestIssueLogsReadError checks the level of the log entry for a read error. A
-// request that the client canceled is not a server error. A deadline of the
-// server is a server error.
+// TestIssueLogsReadError checks the result and the level of the log entry for
+// a read error. A request that the client canceled is not a server error. An
+// expired deadline makes the server busy, and it is not logged.
 func TestIssueLogsReadError(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		makeCtx   func() (context.Context, context.CancelFunc)
 		readErr   error
+		wantErr   error
 		wantError bool
 	}{
 		{
@@ -211,6 +212,7 @@ func TestIssueLogsReadError(t *testing.T) {
 				return context.WithCancel(context.Background())
 			},
 			readErr:   errors.New("connection refused"),
+			wantErr:   issueticket.ErrInternal,
 			wantError: true,
 		},
 		{
@@ -221,6 +223,7 @@ func TestIssueLogsReadError(t *testing.T) {
 				return ctx, cancel
 			},
 			readErr:   context.Canceled,
+			wantErr:   issueticket.ErrInternal,
 			wantError: false,
 		},
 		{
@@ -229,7 +232,8 @@ func TestIssueLogsReadError(t *testing.T) {
 				return context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 			},
 			readErr:   context.DeadlineExceeded,
-			wantError: true,
+			wantErr:   issueticket.ErrBusy,
+			wantError: false,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -239,7 +243,7 @@ func TestIssueLogsReadError(t *testing.T) {
 			defer cancel()
 
 			resp, err := f.issuer.IssueTicket(ctx, testUserID, issueticket.Request{DeviceID: "21"})
-			require.ErrorIs(t, err, issueticket.ErrInternal)
+			require.ErrorIs(t, err, tc.wantErr)
 			require.Nil(t, resp)
 
 			logs := f.logs(t)

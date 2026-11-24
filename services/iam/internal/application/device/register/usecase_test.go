@@ -606,14 +606,16 @@ func TestDeviceRegisterRegisterDeviceError(t *testing.T) {
 	}
 }
 
-// TestDeviceRegisterMapReadErrorLogLevel checks the level of the log entry for
-// a read error. A request that the client canceled is not a server error. A
-// deadline of the server is a server error.
+// TestDeviceRegisterMapReadErrorLogLevel checks the result and the level of
+// the log entry for a read error. A request that the client canceled is not a
+// server error. An expired deadline makes the server busy, and it is not
+// logged.
 func TestDeviceRegisterMapReadErrorLogLevel(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		makeCtx   func() (context.Context, context.CancelFunc)
 		readErr   error
+		wantErr   error
 		wantError bool
 	}{
 		{
@@ -622,6 +624,7 @@ func TestDeviceRegisterMapReadErrorLogLevel(t *testing.T) {
 				return context.WithCancel(context.Background())
 			},
 			readErr:   errors.New("connection refused"),
+			wantErr:   ErrInternal,
 			wantError: true,
 		},
 		{
@@ -632,6 +635,7 @@ func TestDeviceRegisterMapReadErrorLogLevel(t *testing.T) {
 				return ctx, cancel
 			},
 			readErr:   context.Canceled,
+			wantErr:   ErrInternal,
 			wantError: false,
 		},
 		{
@@ -640,7 +644,8 @@ func TestDeviceRegisterMapReadErrorLogLevel(t *testing.T) {
 				return context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 			},
 			readErr:   context.DeadlineExceeded,
-			wantError: true,
+			wantErr:   ErrBusy,
+			wantError: false,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -651,7 +656,7 @@ func TestDeviceRegisterMapReadErrorLogLevel(t *testing.T) {
 
 			usecase := &Usecase{logger: logger}
 			err := usecase.mapReadError(ctx, tc.readErr)
-			require.ErrorIs(t, err, ErrInternal)
+			require.ErrorIs(t, err, tc.wantErr)
 
 			require.NoError(t, logger.Sync())
 			raw, err := os.ReadFile(logPath)
@@ -723,6 +728,96 @@ func TestDeviceRegisterRegisterTransactionError(t *testing.T) {
 			} else {
 				require.NotContains(t, string(raw), `"level":"error"`)
 			}
+		})
+	}
+}
+
+// TestDeviceRegisterRegisterDeadline checks an error of the database after the
+// deadline of the request expired. The server is busy, so the client gets
+// ErrBusy and no error is logged. An error that the use case defines, such as a
+// duplicate device, still has priority.
+func TestDeviceRegisterRegisterDeadline(t *testing.T) {
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	req := validRegisterRequest(publicKey)
+	activeUser := &user.Info{
+		ID:        1,
+		Username:  req.Username,
+		PhoneHash: req.PhoneHash,
+		PhoneTail: req.PhoneTail,
+		State:     user.StateActive,
+	}
+	driverErr := errors.New("driver: invalid connection")
+
+	for _, test := range []struct {
+		name            string
+		existingUser    bool
+		firstReadErr    error
+		userWriterErr   error
+		deviceWriterErr error
+		commitErr       error
+		wantErr         error
+	}{
+		{
+			name:         "first read fails",
+			firstReadErr: context.DeadlineExceeded,
+			wantErr:      ErrBusy,
+		},
+		{
+			name:          "user insert fails",
+			userWriterErr: driverErr,
+			wantErr:       ErrBusy,
+		},
+		{
+			name:            "device insert fails",
+			existingUser:    true,
+			deviceWriterErr: driverErr,
+			wantErr:         ErrBusy,
+		},
+		{
+			name:      "commit fails",
+			commitErr: context.DeadlineExceeded,
+			wantErr:   ErrBusy,
+		},
+		{
+			name:            "duplicate device has priority",
+			existingUser:    true,
+			deviceWriterErr: fmt.Errorf("%w: duplicate entry", device.ErrAlreadyExists),
+			wantErr:         ErrDeviceExists,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newRegisterFixture(t, test.userWriterErr, test.deviceWriterErr)
+			f.commitErr = test.commitErr
+			switch {
+			case test.firstReadErr != nil:
+				f.expectRead(false, nil, test.firstReadErr)
+			case test.existingUser:
+				f.expectRead(false, activeUser, nil)
+				f.passwordHasher.EXPECT().
+					Verify(gomock.Any(), req.Password, activeUser.PasswordHash).
+					Return(nil)
+				f.expectRead(true, activeUser, nil)
+			default:
+				f.expectRead(false, nil, nil)
+				f.passwordHasher.EXPECT().
+					Hash(gomock.Any(), req.Password).
+					Return([]byte("hash"), nil)
+			}
+
+			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+			defer cancel()
+
+			resp, regErr := f.register.Register(ctx, 1, req)
+			require.ErrorIs(t, regErr, test.wantErr)
+			require.NotErrorIs(t, regErr, driverErr, "the cause must not reach the client")
+			require.Nil(t, resp)
+
+			require.NoError(t, f.logger.Sync())
+			raw, err := os.ReadFile(f.logPath)
+			require.NoError(t, err)
+			require.NotContains(t, string(raw), `"level":"error"`)
 		})
 	}
 }

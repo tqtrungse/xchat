@@ -138,14 +138,13 @@ func (u *Usecase) Register(
 
 // mapTransactionError converts an error of the database transaction to an
 // error of this use case. A lock conflict, for example a deadlock at commit, is
-// temporary. The client can try again. Any other error is a server error.
-// mapTransactionError logs it and hides the cause from the client.
+// temporary. The client can try again. mapUnknownError converts any other
+// error.
 func (u *Usecase) mapTransactionError(ctx context.Context, err error) error {
 	if sql.IsLockConflict(err) {
 		return ErrBusy
 	}
-	u.logError(ctx, "failed to run the register transaction", err)
-	return ErrInternal
+	return u.mapUnknownError(ctx, "failed to run the register transaction", err)
 }
 
 func (u *Usecase) createUser(
@@ -178,8 +177,7 @@ func (u *Usecase) createUser(
 	if errors.Is(err, user.ErrUniqueConflict) {
 		return ErrUserExists
 	}
-	u.logError(dbCtx, "failed to register user", err)
-	return ErrInternal
+	return u.mapUnknownError(dbCtx, "failed to register user", err)
 }
 
 func (u *Usecase) createDevice(
@@ -207,8 +205,7 @@ func (u *Usecase) createDevice(
 	if errors.Is(err, device.ErrAlreadyExists) {
 		return ErrDeviceExists
 	}
-	u.logError(dbCtx, "failed to register device", err)
-	return ErrInternal
+	return u.mapUnknownError(dbCtx, "failed to register device", err)
 }
 
 func (u *Usecase) verifyCredentials(
@@ -264,20 +261,31 @@ func (u *Usecase) lockAndCheck(
 }
 
 // mapReadError converts an error of the user reader to an error of this use
-// case. A lock conflict is temporary. The client can try again. Any other error
-// is a server error. mapReadError logs it and hides the cause from the client.
+// case. A lock conflict is temporary. The client can try again.
+// mapUnknownError converts any other error.
 func (u *Usecase) mapReadError(ctx context.Context, err error) error {
 	if sql.IsLockConflict(err) {
 		return ErrBusy
 	}
-	u.logError(ctx, "failed to read user", err)
+	return u.mapUnknownError(ctx, "failed to read user", err)
+}
+
+// mapUnknownError converts an error that this use case does not define to an
+// error of this use case. If the deadline of ctx expired, the server is busy
+// and the client can try again. mapUnknownError does not log this case,
+// because the access log records each response status. Any other error is a
+// server error. mapUnknownError logs it and hides the cause from the client.
+func (u *Usecase) mapUnknownError(ctx context.Context, message string, err error) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return ErrBusy
+	}
+	u.logError(ctx, message, err)
 	return ErrInternal
 }
 
 // logError logs err at the error level. If the client canceled the request,
 // logError logs err at the debug level, because the failure is then not a
-// server error. A deadline of the server is a server error, so it stays at the
-// error level.
+// server error.
 func (u *Usecase) logError(ctx context.Context, message string, err error) {
 	if errors.Is(ctx.Err(), context.Canceled) {
 		u.logger.Debug(message, zap.Error(err))

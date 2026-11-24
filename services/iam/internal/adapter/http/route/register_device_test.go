@@ -16,6 +16,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"xchat/services/iam/internal/adapter/http/httpx"
 	"xchat/services/iam/internal/adapter/http/rejection"
@@ -138,10 +139,22 @@ type registerDeviceFixture struct {
 	logPath    string
 }
 
-// newRegisterDeviceFixture makes the fixture. Each middleware runs after the
-// one that sets the claims, and before the handler.
+// newRegisterDeviceFixture makes the fixture with testUsecaseTimeout. Each
+// middleware runs after the one that sets the claims, and before the handler.
 func newRegisterDeviceFixture(
 	t *testing.T,
+	claims *jwt.Claims,
+	middleware ...gin.HandlerFunc,
+) *registerDeviceFixture {
+	t.Helper()
+	return newRegisterDeviceFixtureWithTimeout(t, testUsecaseTimeout, claims, middleware...)
+}
+
+// newRegisterDeviceFixtureWithTimeout makes the fixture with timeout as the
+// deadline of the use case.
+func newRegisterDeviceFixtureWithTimeout(
+	t *testing.T,
+	timeout time.Duration,
 	claims *jwt.Claims,
 	middleware ...gin.HandlerFunc,
 ) *registerDeviceFixture {
@@ -150,7 +163,7 @@ func newRegisterDeviceFixture(
 
 	usecase := mocks.NewMockDeviceRegisterer(gomock.NewController(t))
 	logger, rejections, logPath := newTestDepsWithLog(t)
-	handler := NewRegisterDeviceHandler(usecase, logger, rejections)
+	handler := NewRegisterDeviceHandler(usecase, timeout, logger, rejections)
 
 	engine := gin.New()
 	group := engine.Group("/api")
@@ -438,6 +451,56 @@ func TestRegisterDeviceResponseWriteFailure(t *testing.T) {
 			require.Contains(t, logged, test.wantLog)
 			require.NotContains(t, logged, test.wantNoLog)
 			require.Contains(t, logged, `"user_id":42`)
+		})
+	}
+}
+
+// TestRegisterDeviceUsecaseDeadline checks that the use case gets a context
+// with the deadline of the handler. The handler must cancel the context after
+// the use case returns.
+func TestRegisterDeviceUsecaseDeadline(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		timeout      time.Duration
+		wantDeadline bool
+	}{
+		{
+			name:         "positive timeout sets a deadline",
+			timeout:      testUsecaseTimeout,
+			wantDeadline: true,
+		},
+		{
+			name:         "negative timeout disables the deadline",
+			timeout:      -time.Second,
+			wantDeadline: false,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newRegisterDeviceFixtureWithTimeout(t, test.timeout, &jwt.Claims{UserID: "42"})
+
+			var usecaseCtx context.Context
+			f.usecase.EXPECT().
+				Register(gomock.Any(), user.ID(42), gomock.Any()).
+				DoAndReturn(func(ctx context.Context, _ user.ID, _ *register.Request) (*register.Response, error) {
+					usecaseCtx = ctx
+					deadline, hasDeadline := ctx.Deadline()
+					require.Equal(t, test.wantDeadline, hasDeadline)
+					if test.wantDeadline {
+						remaining := time.Until(deadline)
+						require.Positive(t, remaining)
+						require.LessOrEqual(t, remaining, test.timeout)
+					}
+					return nil, register.ErrBusy
+				})
+
+			recorder := f.post(validRegisterDeviceBody)
+
+			require.Equal(t, nethttp.StatusServiceUnavailable, recorder.Code)
+			require.Equal(t, retryAfterBusySeconds, recorder.Header().Get("Retry-After"))
+			require.NotNil(t, usecaseCtx)
+			if test.wantDeadline {
+				require.ErrorIs(t, usecaseCtx.Err(), context.Canceled, "the handler must cancel the context")
+			}
 		})
 	}
 }

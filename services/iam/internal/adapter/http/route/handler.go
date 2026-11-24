@@ -6,8 +6,10 @@
 package route
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"xchat/services/iam/internal/adapter/http/httpx"
 	"xchat/services/iam/internal/adapter/http/rejection"
@@ -37,6 +39,20 @@ func requireAuthenticatedUser(
 		return 0, false
 	}
 	return userID, true
+}
+
+// withTimeout gives a copy of ctx with a deadline after timeout. If timeout is
+// zero or negative, withTimeout gives ctx without a new deadline. The caller
+// must call the cancel function after the use case returns.
+//
+// The request context ends only when the client leaves. The HTTP write timeout
+// does not end it. Without a deadline, a use case can wait without limit for a
+// free database connection or a free password hasher.
+func withTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout <= 0 {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, timeout)
 }
 
 // decodeRequestBody reads the JSON body of the request into out. The caller

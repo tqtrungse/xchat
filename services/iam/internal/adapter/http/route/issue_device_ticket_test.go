@@ -6,6 +6,7 @@
 package route
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"xchat/services/iam/internal/adapter/http/httpx"
 	"xchat/services/iam/internal/adapter/http/rejection"
@@ -63,6 +65,7 @@ func TestMapIssueDeviceTicketError(t *testing.T) {
 		wantCode       string
 		wantRejection  bool
 		wantUnexpected bool
+		wantRetryAfter string
 	}{
 		{
 			name:          "invalid request",
@@ -70,6 +73,13 @@ func TestMapIssueDeviceTicketError(t *testing.T) {
 			wantStatus:    nethttp.StatusBadRequest,
 			wantCode:      "invalid_request",
 			wantRejection: true,
+		},
+		{
+			name:           "busy",
+			err:            issueticket.ErrBusy,
+			wantStatus:     nethttp.StatusServiceUnavailable,
+			wantCode:       "busy",
+			wantRetryAfter: retryAfterBusySeconds,
 		},
 		{
 			name:       "device not found",
@@ -111,6 +121,7 @@ func TestMapIssueDeviceTicketError(t *testing.T) {
 			require.Equal(t, test.wantCode, got.code)
 			require.Equal(t, test.wantRejection, got.reason != nil)
 			require.Equal(t, test.wantUnexpected, got.unexpected)
+			require.Equal(t, test.wantRetryAfter, got.retryAfter)
 
 			// The response must not leak the text of an unknown error.
 			require.NotContains(t, got.description, "driver")
@@ -128,10 +139,22 @@ type issueDeviceTicketFixture struct {
 	logPath    string
 }
 
-// newIssueDeviceTicketFixture makes the fixture. Each middleware runs after the
-// one that sets the claims, and before the handler.
+// newIssueDeviceTicketFixture makes the fixture with testUsecaseTimeout. Each
+// middleware runs after the one that sets the claims, and before the handler.
 func newIssueDeviceTicketFixture(
 	t *testing.T,
+	claims *jwt.Claims,
+	middleware ...gin.HandlerFunc,
+) *issueDeviceTicketFixture {
+	t.Helper()
+	return newIssueDeviceTicketFixtureWithTimeout(t, testUsecaseTimeout, claims, middleware...)
+}
+
+// newIssueDeviceTicketFixtureWithTimeout makes the fixture with timeout as the
+// deadline of the use case.
+func newIssueDeviceTicketFixtureWithTimeout(
+	t *testing.T,
+	timeout time.Duration,
 	claims *jwt.Claims,
 	middleware ...gin.HandlerFunc,
 ) *issueDeviceTicketFixture {
@@ -140,7 +163,7 @@ func newIssueDeviceTicketFixture(
 
 	usecase := mocks.NewMockDeviceTicketIssuer(gomock.NewController(t))
 	logger, rejections, logPath := newTestDepsWithLog(t)
-	handler := NewIssueDeviceTicketHandler(usecase, logger, rejections)
+	handler := NewIssueDeviceTicketHandler(usecase, timeout, logger, rejections)
 
 	engine := gin.New()
 	group := engine.Group("/api")
@@ -319,6 +342,7 @@ func TestIssueDeviceTicketUsecaseErrors(t *testing.T) {
 		err            error
 		wantStatus     int
 		wantJSON       string
+		wantRetryAfter string
 		wantRejections map[rejection.Reason]uint64
 	}{
 		{
@@ -329,6 +353,13 @@ func TestIssueDeviceTicketUsecaseErrors(t *testing.T) {
 			wantRejections: map[rejection.Reason]uint64{
 				rejection.RequestBody: 1,
 			},
+		},
+		{
+			name:           "busy",
+			err:            issueticket.ErrBusy,
+			wantStatus:     nethttp.StatusServiceUnavailable,
+			wantJSON:       `{"error":"busy","error_description":"retry again"}`,
+			wantRetryAfter: retryAfterBusySeconds,
 		},
 		{
 			name:       "device not found",
@@ -357,7 +388,57 @@ func TestIssueDeviceTicketUsecaseErrors(t *testing.T) {
 
 			require.Equal(t, test.wantStatus, recorder.Code)
 			require.JSONEq(t, test.wantJSON, recorder.Body.String())
+			require.Equal(t, test.wantRetryAfter, recorder.Header().Get("Retry-After"))
 			f.requireRejections(t, test.wantRejections)
+		})
+	}
+}
+
+// TestIssueDeviceTicketUsecaseDeadline checks that the use case gets a context
+// with the deadline of the handler. The handler must cancel the context after
+// the use case returns.
+func TestIssueDeviceTicketUsecaseDeadline(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		timeout      time.Duration
+		wantDeadline bool
+	}{
+		{
+			name:         "positive timeout sets a deadline",
+			timeout:      testUsecaseTimeout,
+			wantDeadline: true,
+		},
+		{
+			name:         "negative timeout disables the deadline",
+			timeout:      -time.Second,
+			wantDeadline: false,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newIssueDeviceTicketFixtureWithTimeout(t, test.timeout, &jwt.Claims{UserID: "42"})
+
+			var usecaseCtx context.Context
+			f.usecase.EXPECT().
+				IssueTicket(gomock.Any(), user.ID(42), issueticket.Request{DeviceID: "1234"}).
+				DoAndReturn(func(ctx context.Context, _ user.ID, _ issueticket.Request) (*issueticket.Response, error) {
+					usecaseCtx = ctx
+					deadline, hasDeadline := ctx.Deadline()
+					require.Equal(t, test.wantDeadline, hasDeadline)
+					if test.wantDeadline {
+						remaining := time.Until(deadline)
+						require.Positive(t, remaining)
+						require.LessOrEqual(t, remaining, test.timeout)
+					}
+					return nil, issueticket.ErrBusy
+				})
+
+			recorder := f.post(validIssueDeviceTicketBody)
+
+			require.Equal(t, nethttp.StatusServiceUnavailable, recorder.Code)
+			require.NotNil(t, usecaseCtx)
+			if test.wantDeadline {
+				require.ErrorIs(t, usecaseCtx.Err(), context.Canceled, "the handler must cancel the context")
+			}
 		})
 	}
 }

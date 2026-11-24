@@ -38,3 +38,6 @@ profile.cov
 .local.crt
 .local.key
 .local.hub-descriptor.json
+
+# Codegraph
+.codegraph/

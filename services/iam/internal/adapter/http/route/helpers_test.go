@@ -18,6 +18,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// testUsecaseTimeout is the deadline of the use case in the handler tests. It
+// is long, so that a slow test machine does not reach it.
+const testUsecaseTimeout = time.Minute
+
 func newTestDeps(t *testing.T) (*log.Logger, *reject.Stats[rejection.Reason]) {
 	t.Helper()
 

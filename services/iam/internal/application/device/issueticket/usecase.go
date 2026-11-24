@@ -62,7 +62,8 @@ func New(
 // Issue returns ErrRequestInvalid if the device ID is not valid. It returns
 // ErrDeviceNotFound if the device does not exist, is deleted, or belongs to
 // another user. It returns ErrDeviceInactive if the device is not active. It
-// returns ErrInternal for any other failure.
+// returns ErrBusy if the deadline of ctx expires before the read of the device
+// ends. It returns ErrInternal for any other failure.
 func (u *Usecase) IssueTicket(
 	ctx context.Context,
 	userID user.ID,
@@ -79,6 +80,11 @@ func (u *Usecase) IssueTicket(
 		return err
 	})
 	if err != nil {
+		// The server is busy, and the client can try again. The access log
+		// records each response status, so this case is not logged.
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return nil, ErrBusy
+		}
 		if errors.Is(ctx.Err(), context.Canceled) {
 			u.logger.Debug("failed to read device", zap.Error(err), zap.Uint64("id", id))
 		} else {

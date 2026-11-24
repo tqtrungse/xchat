@@ -13,4 +13,5 @@ var (
 	ErrDeviceNotFound = errors.New("device not found")
 	ErrDeviceInactive = errors.New("inactive device")
 	ErrInternal       = errors.New("internal error")
+	ErrBusy           = errors.New("retry again")
 )

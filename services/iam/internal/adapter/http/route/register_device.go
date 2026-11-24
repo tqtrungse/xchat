@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"xchat/services/iam/internal/adapter/http/httpx"
 	"xchat/services/iam/internal/adapter/http/rejection"
@@ -48,19 +49,23 @@ type DeviceRegisterer interface {
 // not exist.
 type RegisterDeviceHandler struct {
 	usecase    DeviceRegisterer
+	timeout    time.Duration
 	logger     *log.Logger
 	rejections *reject.Stats[rejection.Reason]
 }
 
 // NewRegisterDeviceHandler makes a RegisterDeviceHandler. The caller must give all
-// arguments.
+// arguments. timeout is the deadline of the use case. A timeout of zero or less
+// disables the deadline.
 func NewRegisterDeviceHandler(
 	usecase DeviceRegisterer,
+	timeout time.Duration,
 	logger *log.Logger,
 	rejections *reject.Stats[rejection.Reason],
 ) *RegisterDeviceHandler {
 	return &RegisterDeviceHandler{
 		usecase:    usecase,
+		timeout:    timeout,
 		logger:     logger,
 		rejections: rejections,
 	}
@@ -92,7 +97,10 @@ func (h *RegisterDeviceHandler) handle(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.usecase.Register(c.Request.Context(), user.ID(userID), &req)
+	ctx, cancel := withTimeout(c.Request.Context(), h.timeout)
+	defer cancel()
+
+	resp, err := h.usecase.Register(ctx, user.ID(userID), &req)
 	if err != nil {
 		respondUsecaseFailure(
 			c,
