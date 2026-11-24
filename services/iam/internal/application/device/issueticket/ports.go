@@ -15,6 +15,7 @@ import (
 
 type DeviceMeta struct {
 	UserID      user.ID
+	UserState   user.State
 	State       device.State
 	IdentityPub []byte
 }

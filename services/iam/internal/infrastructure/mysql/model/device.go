@@ -25,4 +25,8 @@ type Device struct {
 	UpdatedAt   time.Time      `gorm:"<-:update"`
 	DeletedAt   gorm.DeletedAt `gorm:"->"`
 	SeenAt      time.Time      `gorm:"<-:update"`
+
+	// A device exists only if there is a user.
+	// So User always exist in preload from device.
+	User User `gorm:"foreignKey:UserID;references:ID"`
 }

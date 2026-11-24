@@ -57,13 +57,13 @@ func New(
 }
 
 // IssueTicket issues a ticket for the device in req. The device must belong to the
-// user with ID userID, and the device must be active.
+// user with ID userID. The device and the user must be active.
 //
 // Issue returns ErrRequestInvalid if the device ID is not valid. It returns
 // ErrDeviceNotFound if the device does not exist, is deleted, or belongs to
-// another user. It returns ErrDeviceInactive if the device is not active. It
-// returns ErrBusy if the deadline of ctx expires before the read of the device
-// ends. It returns ErrInternal for any other failure.
+// another user. It returns ErrDeviceInactive if the device or the user is not
+// active. It returns ErrBusy if the deadline of ctx expires before the read
+// of the device ends. It returns ErrInternal for any other failure.
 func (u *Usecase) IssueTicket(
 	ctx context.Context,
 	userID user.ID,
@@ -95,9 +95,7 @@ func (u *Usecase) IssueTicket(
 	if deviceMeta == nil || deviceMeta.UserID != userID {
 		return nil, ErrDeviceNotFound
 	}
-	// The state of the user is not checked here. A lock of a user must also
-	// lock each device of the user. Then a locked user cannot get a ticket.
-	if deviceMeta.State != device.StateActive {
+	if deviceMeta.UserState != user.StateActive || deviceMeta.State != device.StateActive {
 		return nil, ErrDeviceInactive
 	}
 

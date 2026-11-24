@@ -57,6 +57,15 @@ func Test_DeviceReader_GetMeta(t *testing.T) {
 		"identity_pub",
 	}
 
+	// The preload reads the state of the user that owns the device.
+	preloadQuery := fmt.Sprintf("^%s$", regexp.QuoteMeta(
+		"SELECT `id`,`state` FROM `users` WHERE `users`.`id` = ?",
+	))
+	preloadColumns := []string{
+		"id",
+		"state",
+	}
+
 	testCases := map[string]testcase{
 		"Success (found)": {
 			prepare: func(f *fields) {
@@ -73,10 +82,20 @@ func Test_DeviceReader_GetMeta(t *testing.T) {
 							identityPub,
 						),
 					)
+				f.sqlMock.
+					ExpectQuery(preloadQuery).
+					WithArgs(user.ID(123)).
+					WillReturnRows(
+						sqlmock.NewRows(preloadColumns).AddRow(
+							uint64(123),
+							user.StateActive,
+						),
+					)
 			},
 			deviceID: device.ID(21),
 			expected: &issueticket.DeviceMeta{
 				UserID:      user.ID(123),
+				UserState:   user.StateActive,
 				State:       device.StateLocked,
 				IdentityPub: identityPub,
 			},

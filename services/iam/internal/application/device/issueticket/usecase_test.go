@@ -162,6 +162,7 @@ func TestIssueRejectsDevice(t *testing.T) {
 			name: "device of another user",
 			deviceMeta: &issueticket.DeviceMeta{
 				UserID:      testUserID + 1,
+				UserState:   user.StateActive,
 				State:       device.StateActive,
 				IdentityPub: identityPub,
 			},
@@ -171,7 +172,18 @@ func TestIssueRejectsDevice(t *testing.T) {
 			name: "locked device",
 			deviceMeta: &issueticket.DeviceMeta{
 				UserID:      testUserID,
+				UserState:   user.StateActive,
 				State:       device.StateLocked,
+				IdentityPub: identityPub,
+			},
+			wantErr: issueticket.ErrDeviceInactive,
+		},
+		{
+			name: "locked user",
+			deviceMeta: &issueticket.DeviceMeta{
+				UserID:      testUserID,
+				UserState:   user.StateLocked,
+				State:       device.StateActive,
 				IdentityPub: identityPub,
 			},
 			wantErr: issueticket.ErrDeviceInactive,
@@ -262,6 +274,7 @@ func TestIssueHidesSignError(t *testing.T) {
 	f.expectRead(
 		&issueticket.DeviceMeta{
 			UserID:      testUserID,
+			UserState:   user.StateActive,
 			State:       device.StateActive,
 			IdentityPub: newIdentityPub(t),
 		},
@@ -287,6 +300,7 @@ func TestIssueSuccess(t *testing.T) {
 	f.expectRead(
 		&issueticket.DeviceMeta{
 			UserID:      testUserID,
+			UserState:   user.StateActive,
 			State:       device.StateActive,
 			IdentityPub: identityPub,
 		},

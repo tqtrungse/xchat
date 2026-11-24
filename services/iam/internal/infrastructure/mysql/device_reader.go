@@ -11,7 +11,6 @@ import (
 
 	"xchat/services/iam/internal/application/device/issueticket"
 	"xchat/services/iam/internal/domain/device"
-	"xchat/services/iam/internal/domain/user"
 	"xchat/services/iam/internal/infrastructure/mysql/model"
 
 	"xchat/pkg/database/sql"
@@ -35,13 +34,7 @@ func (dr *DeviceReader) GetMeta(dbCtx context.Context, deviceID device.ID) (*iss
 		return nil, err
 	}
 
-	type Record struct {
-		UserID      user.ID
-		State       device.State
-		IdentityPub []byte
-	}
-
-	var record Record
+	var deviceRecord model.Device
 	err = val.(*gorm.DB).
 		WithContext(dbCtx).
 		Model(&model.Device{}).
@@ -50,8 +43,14 @@ func (dr *DeviceReader) GetMeta(dbCtx context.Context, deviceID device.ID) (*iss
 			"state",
 			"identity_pub",
 		}).
+		Preload("User", func(db *gorm.DB) *gorm.DB {
+			return db.Select([]string{
+				"id",
+				"state",
+			})
+		}).
 		Where("id = ?", deviceID).
-		Take(&record).
+		Take(&deviceRecord).
 		Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -61,8 +60,9 @@ func (dr *DeviceReader) GetMeta(dbCtx context.Context, deviceID device.ID) (*iss
 	}
 
 	return &issueticket.DeviceMeta{
-		UserID:      record.UserID,
-		State:       record.State,
-		IdentityPub: record.IdentityPub,
+		UserID:      deviceRecord.UserID,
+		UserState:   deviceRecord.User.State,
+		State:       deviceRecord.State,
+		IdentityPub: deviceRecord.IdentityPub,
 	}, nil
 }
