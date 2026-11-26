@@ -35,7 +35,7 @@ const (
 )
 
 // DeviceRegisterer is the use case that the handler of POST /api/device/register
-// calls. *registerdevice.Usecase implements it.
+// calls. *register.Usecase implements it.
 type DeviceRegisterer interface {
 	Register(
 		ctx context.Context,
@@ -112,6 +112,15 @@ func (h *RegisterDeviceHandler) handle(c *gin.Context) {
 			err,
 			mapRegisterDeviceError(err),
 		)
+		return
+	}
+	if resp == nil {
+		// The use case must return a response when it returns no error.
+		h.logger.Error(
+			"register device returned no response",
+			zap.Uint64("user_id", userID),
+		)
+		httpx.RespondError(c, http.StatusInternalServerError, "internal_error", httpx.ErrInternal.Error())
 		return
 	}
 

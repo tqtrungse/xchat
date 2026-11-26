@@ -431,6 +431,24 @@ func failWrites(err error) gin.HandlerFunc {
 	}
 }
 
+// TestRegisterDeviceNilResponse checks that the handler gives 500 and does not
+// panic when the use case returns no response and no error.
+func TestRegisterDeviceNilResponse(t *testing.T) {
+	f := newRegisterDeviceFixture(t, testToken("42"))
+	f.expectRegister(nil, nil, nil)
+
+	recorder := f.post(validRegisterDeviceBody)
+
+	require.Equal(t, nethttp.StatusInternalServerError, recorder.Code)
+	require.JSONEq(
+		t,
+		`{"error":"internal_error","error_description":"internal error"}`,
+		recorder.Body.String(),
+	)
+	require.Contains(t, f.log(t), "register device returned no response")
+	f.requireRejections(t, nil)
+}
+
 func TestRegisterDeviceResponseWriteFailure(t *testing.T) {
 	for _, test := range []struct {
 		name           string

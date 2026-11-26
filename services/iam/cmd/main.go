@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
 	"xchat/services/iam/cmd/bootstrap"
 
 	"xchat/pkg/config"

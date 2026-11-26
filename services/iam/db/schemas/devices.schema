@@ -6,7 +6,7 @@ create_table   :devices,
 
     t.bigint  :user_id,       unsigned: true, null: false
     t.string  :name,          limit: 128,     null: false             # Device type + OS name
-    t.integer :state,                         null: false, default: 1 # 1: active, 2: locked
+    t.integer :state,         limit: 2,       null: false, default: 1 # smallint. 1: active, 2: locked
     t.binary  :peer_pub,      limit: 32,      null: false             # x25519
     t.binary  :identity_pub,  limit: 32,      null: false             # ed25519.GenerateKey(rand.Reader)
 

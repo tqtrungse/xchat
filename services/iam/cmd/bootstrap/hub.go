@@ -29,12 +29,12 @@ var errDuplicateKey = errors.New("hub descriptor has a duplicate key")
 // issue ticket use case.
 func loadHubEndpoint(loader config.Loader) (*hub.Descriptor, error) {
 	if loader == nil {
-		return nil, fmt.Errorf("config loader is nil")
+		return nil, errors.New("config loader is nil")
 	}
 
 	path := strings.TrimSpace(loader.GetString("HUB_NOISE_DESCRIPTOR_FILE"))
 	if len(path) == 0 {
-		return nil, fmt.Errorf("HUB_NOISE_DESCRIPTOR_FILE is required")
+		return nil, errors.New("HUB_NOISE_DESCRIPTOR_FILE is required")
 	}
 
 	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)

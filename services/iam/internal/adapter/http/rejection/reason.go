@@ -24,7 +24,9 @@ var names = [numReasons]string{
 	ResponseWrite: "iam_response_write",
 }
 
-// Names returns a copy of the stable labels indexed by Reason.
+// Names returns the stable labels indexed by Reason. The slice shares its array
+// with the package, and reject.New keeps it. The caller must not change the
+// slice.
 func Names() []string {
 	return names[:]
 }
