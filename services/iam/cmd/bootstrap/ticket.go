@@ -23,7 +23,7 @@ func loadTicketSigner(loader config.Loader) (*crypto.TicketSigner, error) {
 		return nil, errors.New("invalid TICKET_SIGNING_KEY_ID")
 	}
 
-	seed, err := parseTicketSigningPrivate(strings.TrimSpace(loader.GetString("TICKET_SIGNING_PRIVATE_KEY")))
+	seed, err := parseTicketSigningPrivate(loader.GetString("TICKET_SIGNING_PRIVATE_KEY"))
 	if err != nil {
 		return nil, err
 	}
@@ -47,9 +47,8 @@ func parseTicketSigningPrivate(value string) ([]byte, error) {
 	}
 
 	if len(seed) != ed25519.SeedSize {
-		got := len(seed)
 		clear(seed[:cap(seed)])
-		return nil, fmt.Errorf("ticket signing seed: want %d bytes, got %d", ed25519.SeedSize, got)
+		return nil, fmt.Errorf("ticket signing seed: want %d bytes, got %d", ed25519.SeedSize, len(seed))
 	}
 
 	return seed, nil

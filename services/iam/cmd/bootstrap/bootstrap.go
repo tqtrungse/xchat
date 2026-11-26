@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"time"
 
@@ -92,11 +91,13 @@ func Run(ctx, abort context.Context, env config.Env) (retErr error) {
 	syncLogger(logger)
 
 	select {
+	// Run gives nil after Shutdown and wraps each other error. Run never gives
+	// http.ErrServerClosed.
 	case err = <-serverResult:
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
+		if err != nil {
+			return fmt.Errorf("failed to run IAM HTTP server: %w", err)
 		}
-		return fmt.Errorf("failed to run IAM HTTP server: %w", err)
+		return nil
 
 	case <-ctx.Done():
 		logger.Info("shutting down IAM HTTP server")
@@ -112,10 +113,7 @@ func Run(ctx, abort context.Context, env config.Env) (retErr error) {
 			logger.Warn("graceful shutdown aborted, closed each connection")
 		}
 		serverErr := <-serverResult
-
-		if errors.Is(serverErr, http.ErrServerClosed) {
-			serverErr = nil
-		} else if serverErr != nil {
+		if serverErr != nil {
 			serverErr = fmt.Errorf("failed to run IAM HTTP server: %w", serverErr)
 		}
 
