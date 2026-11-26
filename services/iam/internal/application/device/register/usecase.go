@@ -298,12 +298,14 @@ func (u *Usecase) logError(ctx context.Context, message string, err error) {
 }
 
 // mapPasswordError converts an error of the password hasher to an error of
-// this use case. A wrong password is a client error. A busy hasher is a
-// temporary error. The client can try again. Any other error is a server
-// error. mapPasswordError logs it and hides the cause from the client.
+// this use case. A wrong password and a password that is too long are client
+// errors. A busy hasher is a temporary error. The client can try again. Any
+// other error is a server error. mapPasswordError logs it and hides the cause
+// from the client.
 func (u *Usecase) mapPasswordError(err error) error {
 	switch {
-	case errors.Is(err, ErrPasswordMismatch):
+	case errors.Is(err, ErrPasswordMismatch),
+		errors.Is(err, ErrPasswordTooLong):
 		return ErrRequestInvalid
 	case errors.Is(err, ErrPasswordHasherBusy):
 		return ErrBusy

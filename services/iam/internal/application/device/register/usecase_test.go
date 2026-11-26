@@ -280,6 +280,13 @@ func TestDeviceRegisterValidateUserPassword(t *testing.T) {
 			wantErr:   ErrBusy,
 		},
 		{
+			// A password that is too long is an error of the client, not of
+			// the server.
+			name:      "too long",
+			verifyErr: ErrPasswordTooLong,
+			wantErr:   ErrRequestInvalid,
+		},
+		{
 			name:      "other error",
 			verifyErr: cause,
 			wantErr:   ErrInternal,
@@ -328,6 +335,11 @@ func TestDeviceRegisterRegisterPasswordHashError(t *testing.T) {
 			name:    "busy",
 			hashErr: ErrPasswordHasherBusy,
 			wantErr: ErrBusy,
+		},
+		{
+			name:    "too long",
+			hashErr: ErrPasswordTooLong,
+			wantErr: ErrRequestInvalid,
 		},
 		{
 			name:    "other error",

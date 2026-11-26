@@ -28,4 +28,8 @@ var (
 	// ErrPasswordHasherBusy means that the hasher has no free capacity before
 	// the context ends. The caller can try again later.
 	ErrPasswordHasherBusy = errors.New("password hasher is busy")
+
+	// ErrPasswordTooLong means that the password is longer than the hasher
+	// accepts. It is an error of the client.
+	ErrPasswordTooLong = errors.New("password is too long")
 )

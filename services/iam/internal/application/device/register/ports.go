@@ -17,11 +17,13 @@ type KeyDeriver interface {
 }
 
 type PasswordHasher interface {
-	// Hash returns ErrPasswordHasherBusy if ctx ends before the hasher has free
-	// capacity.
+	// Hash returns ErrPasswordTooLong if password is longer than the hasher
+	// accepts. It returns ErrPasswordHasherBusy if ctx ends before the hasher
+	// has free capacity.
 	Hash(ctx context.Context, password []byte) ([]byte, error)
 	// Verify returns ErrPasswordMismatch if password does not match hash. It
-	// returns ErrPasswordHasherBusy if ctx ends before the hasher has free
+	// returns ErrPasswordTooLong if password is longer than the hasher accepts.
+	// It returns ErrPasswordHasherBusy if ctx ends before the hasher has free
 	// capacity.
 	Verify(ctx context.Context, password []byte, hash []byte) error
 }

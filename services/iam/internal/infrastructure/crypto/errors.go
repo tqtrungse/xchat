@@ -12,5 +12,4 @@ var (
 	ErrX25519NonCanonicalPeerPub = errors.New("non-canonical X25519 public key encoding")
 	ErrX25519InvalidDerive       = errors.New("invalid X25519 public key: ECDH failed")
 	ErrBcryptInvalidHash         = errors.New("invalid bcrypt hash")
-	ErrBcryptPasswordTooLong     = errors.New("bcrypt password is longer than 72 bytes")
 )

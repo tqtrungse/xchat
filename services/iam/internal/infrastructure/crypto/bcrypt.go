@@ -47,12 +47,12 @@ func NewBcrypt(limit int) Bcrypt {
 
 // Hash hashes password with bcrypt and gives the hash as a 60-byte string.
 // The string has the form: $2a$<cost>$<salt and hash>. Hash generates a new
-// random salt for each call. It returns ErrBcryptPasswordTooLong if password
+// random salt for each call. It returns register.ErrPasswordTooLong if password
 // is longer than 72 bytes. It returns register.ErrPasswordHasherBusy if ctx
 // ends before a slot is free.
 func (b *Bcrypt) Hash(ctx context.Context, password []byte) ([]byte, error) {
 	if len(password) > bcryptMaxPasswordLength {
-		return nil, ErrBcryptPasswordTooLong
+		return nil, register.ErrPasswordTooLong
 	}
 
 	err := b.acquire(ctx)
@@ -69,7 +69,7 @@ func (b *Bcrypt) Hash(ctx context.Context, password []byte) ([]byte, error) {
 }
 
 // Verify checks password against the stored bcrypt hash. Verify reads the cost
-// and the salt from hash. It returns ErrBcryptPasswordTooLong if password is
+// and the salt from hash. It returns register.ErrPasswordTooLong if password is
 // longer than 72 bytes. A longer password must not pass, because bcrypt
 // ignores the extra bytes. It returns register.ErrPasswordHasherBusy if ctx
 // ends before a slot is free. It returns register.ErrPasswordMismatch if the
@@ -77,7 +77,7 @@ func (b *Bcrypt) Hash(ctx context.Context, password []byte) ([]byte, error) {
 // valid.
 func (b *Bcrypt) Verify(ctx context.Context, password []byte, hash []byte) error {
 	if len(password) > bcryptMaxPasswordLength {
-		return ErrBcryptPasswordTooLong
+		return register.ErrPasswordTooLong
 	}
 
 	err := b.acquire(ctx)

@@ -51,8 +51,34 @@ func TestBcryptHashPasswordLength(t *testing.T) {
 	require.NotEmpty(t, hash)
 
 	hash, err = hasher.Hash(context.Background(), []byte(strings.Repeat("a", bcryptMaxPasswordLength+1)))
-	require.ErrorIs(t, err, ErrBcryptPasswordTooLong)
+	require.ErrorIs(t, err, register.ErrPasswordTooLong)
 	require.Nil(t, hash)
+}
+
+// TestBcryptLongPasswordDoesNotWaitForSlot checks that Hash and Verify reject a
+// long password before they wait for a slot. A request that the hasher rejects
+// must not use the capacity of the hasher.
+func TestBcryptLongPasswordDoesNotWaitForSlot(t *testing.T) {
+	t.Parallel()
+
+	password := []byte(strings.Repeat("a", bcryptMaxPasswordLength+1))
+
+	hasher := NewBcrypt(1)
+	require.NoError(t, hasher.acquire(context.Background()))
+	defer hasher.release()
+
+	// The only slot is in use. A check after acquire gives ErrPasswordHasherBusy.
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	hash, err := hasher.Hash(ctx, password)
+	require.ErrorIs(t, err, register.ErrPasswordTooLong)
+	require.NotErrorIs(t, err, register.ErrPasswordHasherBusy)
+	require.Nil(t, hash)
+
+	err = hasher.Verify(ctx, password, []byte("hash"))
+	require.ErrorIs(t, err, register.ErrPasswordTooLong)
+	require.NotErrorIs(t, err, register.ErrPasswordHasherBusy)
 }
 
 func TestBcryptVerify(t *testing.T) {
@@ -79,7 +105,7 @@ func TestBcryptVerifyRejectsLongPassword(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, hasher.Verify(context.Background(), password, hash))
-	require.ErrorIs(t, hasher.Verify(context.Background(), append(password, 'x'), hash), ErrBcryptPasswordTooLong)
+	require.ErrorIs(t, hasher.Verify(context.Background(), append(password, 'x'), hash), register.ErrPasswordTooLong)
 }
 
 func TestBcryptVerifyUsesHashCost(t *testing.T) {
