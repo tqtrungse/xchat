@@ -15,10 +15,15 @@ create_table   :devices,
     t.datetime :deleted_at, precision: 3
     t.datetime "seen_at",   precision: 3,  null: true
 
-    t.index ['user_id'],                    name: 'index_devices_on_user'
-    t.index ['peer_pub', 'deleted_at'],     name: 'unique_index_devices_on_peer_pub_and_deleted_at',     unique: true
-    t.index ['identity_pub', 'deleted_at'], name: 'unique_index_devices_on_identity_pub_and_deleted_at', unique: true
-    t.index ['deleted_at'],                 name: 'index_devices_on_deleted_at'
+    t.index ['user_id'],      name: 'index_devices_on_user'
+    t.index ['deleted_at'],   name: 'index_devices_on_deleted_at'
+
+    t.index '`peer_pub`, (if((`deleted_at` is null),1,NULL))',
+      name:   'unique_index_devices_on_peer_pub',
+      unique: true
+    t.index '`identity_pub`, (if((`deleted_at` is null),1,NULL))',
+      name:   'unique_index_devices_on_identity_pub',
+      unique: true
 
     t.foreign_key    :users,
         column:      :user_id,
