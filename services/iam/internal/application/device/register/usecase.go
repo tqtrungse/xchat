@@ -8,6 +8,7 @@ package register
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	"errors"
 	"fmt"
@@ -23,8 +24,6 @@ import (
 
 	"go.uber.org/zap"
 )
-
-const maxInputPasswordLength = 32
 
 // Usecase registers a device for a user. It creates the user if the user
 // does not exist. For an existing user, it checks the credentials, the state,
@@ -317,7 +316,7 @@ func (u *Usecase) validateInput(userID user.ID, req *Request) error {
 	}
 	if userID == 0 ||
 		!isValidLength(req.Username, user.MaxUsernameLength) ||
-		!isValidLength(req.Password, maxInputPasswordLength) ||
+		!isValidLength(req.Password, sha256.Size) ||
 		!isValidLength(req.PhoneHash, user.MaxPhoneHashLength) ||
 		!isValidLength(req.DeviceName, device.MaxNameLength) ||
 		req.PhoneTail == 0 {
