@@ -181,7 +181,7 @@ func TestDeviceRegisterRegisterRejectsInvalidKey(t *testing.T) {
 	req := validRegisterRequest(publicKey)
 	req.DeviceIdentityPub = bytes.Repeat([]byte{0}, ed25519.PublicKeySize)
 
-	resp, err := f.register.Register(context.Background(), 1, req)
+	resp, err := f.register.Register(context.Background(), 1, testExternalID, req)
 	require.ErrorIs(t, err, ErrRequestInvalid)
 	require.ErrorIs(t, err, ticket.ErrIdentityPubInvalid)
 	require.Nil(t, resp)
@@ -236,7 +236,7 @@ func TestDeviceRegisterRegisterExistingUserCredentialError(t *testing.T) {
 				Verify(gomock.Any(), req.Password, test.storedUser.PasswordHash).
 				Return(test.verifyErr)
 
-			resp, err := f.register.Register(context.Background(), 1, req)
+			resp, err := f.register.Register(context.Background(), 1, testExternalID, req)
 			require.ErrorIs(t, err, test.wantErr)
 			require.NotErrorIs(t, err, ErrInternal)
 			require.Nil(t, resp)
@@ -244,6 +244,10 @@ func TestDeviceRegisterRegisterExistingUserCredentialError(t *testing.T) {
 		})
 	}
 }
+
+// testExternalID is the "sub" claim of the token in the tests. Register stores
+// it as the external ID of a new user.
+const testExternalID = "auth0|external-1"
 
 func validRegisterRequest(publicKey ed25519.PublicKey) *Request {
 	return &Request{
@@ -364,7 +368,7 @@ func TestDeviceRegisterRegisterPasswordHashError(t *testing.T) {
 				Hash(gomock.Any(), req.Password).
 				Return(nil, test.hashErr)
 
-			resp, regErr := f.register.Register(context.Background(), 1, req)
+			resp, regErr := f.register.Register(context.Background(), 1, testExternalID, req)
 			require.ErrorIs(t, regErr, test.wantErr)
 			require.NotErrorIs(t, regErr, cause, "the cause must not reach the client")
 			require.Nil(t, resp)
@@ -378,9 +382,10 @@ func TestDeviceRegisterCreateUser(t *testing.T) {
 	f := newRegisterFixture(t, nil, nil)
 	req := validRegisterRequest(nil)
 
-	require.NoError(t, f.register.createUser(context.Background(), 7, []byte("hash"), req))
+	require.NoError(t, f.register.createUser(context.Background(), 7, testExternalID, []byte("hash"), req))
 	require.Len(t, f.users, 1)
 	require.Equal(t, user.ID(7), f.users[0].ID)
+	require.Equal(t, testExternalID, f.users[0].ExternalID)
 	require.Equal(t, []byte("hash"), f.users[0].PasswordHash)
 }
 
@@ -547,7 +552,7 @@ func TestDeviceRegisterRegisterLocksExistingUser(t *testing.T) {
 				Verify(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(nil)
 
-			resp, regErr := f.register.Register(context.Background(), 1, req)
+			resp, regErr := f.register.Register(context.Background(), 1, testExternalID, req)
 			require.Len(t, f.devices, test.wantDeviceSize)
 			if test.wantErr != nil {
 				require.ErrorIs(t, regErr, test.wantErr)
@@ -598,7 +603,7 @@ func TestDeviceRegisterRegisterNewUser(t *testing.T) {
 				Hash(gomock.Any(), req.Password).
 				Return([]byte("hash"), nil)
 
-			resp, regErr := f.register.Register(context.Background(), 1, req)
+			resp, regErr := f.register.Register(context.Background(), 1, testExternalID, req)
 			if test.wantErr != nil {
 				require.ErrorIs(t, regErr, test.wantErr)
 				require.Nil(t, resp)
@@ -607,6 +612,8 @@ func TestDeviceRegisterRegisterNewUser(t *testing.T) {
 			}
 			require.NoError(t, regErr)
 			require.Len(t, f.users, 1)
+			require.Equal(t, user.ID(1), f.users[0].ID)
+			require.Equal(t, testExternalID, f.users[0].ExternalID)
 			require.Len(t, f.devices, 1)
 			require.Equal(t, device.ID(42).String(), resp.DeviceID)
 		})
@@ -667,7 +674,7 @@ func TestDeviceRegisterRegisterReadError(t *testing.T) {
 				f.expectRead(true, nil, test.lockingErr)
 			}
 
-			resp, regErr := f.register.Register(context.Background(), 1, req)
+			resp, regErr := f.register.Register(context.Background(), 1, testExternalID, req)
 			require.ErrorIs(t, regErr, test.wantErr)
 			require.NotErrorIs(t, regErr, cause, "the cause must not reach the client")
 			require.Nil(t, resp)
@@ -719,7 +726,7 @@ func TestDeviceRegisterRegisterDeviceError(t *testing.T) {
 				Verify(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(nil)
 
-			resp, regErr := f.register.Register(context.Background(), 1, req)
+			resp, regErr := f.register.Register(context.Background(), 1, testExternalID, req)
 			require.ErrorIs(t, regErr, test.wantErr)
 			require.NotErrorIs(t, regErr, cause, "the cause must not reach the client")
 			require.Nil(t, resp)
@@ -835,7 +842,7 @@ func TestDeviceRegisterRegisterTransactionError(t *testing.T) {
 				Hash(gomock.Any(), req.Password).
 				Return([]byte("hash"), nil)
 
-			resp, regErr := f.register.Register(context.Background(), 1, req)
+			resp, regErr := f.register.Register(context.Background(), 1, testExternalID, req)
 			require.ErrorIs(t, regErr, test.wantErr)
 			require.NotErrorIs(t, regErr, test.commitErr, "the cause must not reach the client")
 			require.Nil(t, resp)
@@ -930,7 +937,7 @@ func TestDeviceRegisterRegisterDeadline(t *testing.T) {
 			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 			defer cancel()
 
-			resp, regErr := f.register.Register(ctx, 1, req)
+			resp, regErr := f.register.Register(ctx, 1, testExternalID, req)
 			require.ErrorIs(t, regErr, test.wantErr)
 			require.NotErrorIs(t, regErr, driverErr, "the cause must not reach the client")
 			require.Nil(t, resp)

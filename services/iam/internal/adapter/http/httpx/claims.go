@@ -55,15 +55,15 @@ func ClaimsFromContext(c *gin.Context) (*jwt.ExtClaims[Claims], bool) {
 //
 // The ID is parsed as a number so that alternate spellings such as "42" and
 // "042" are the same user. Otherwise, they could create separate quotas.
-func AuthenticatedUserID(c *gin.Context) (userID uint64, ok bool) {
+func AuthenticatedUserID(c *gin.Context) (userID uint64, userExternalID string, ok bool) {
 	claims, ok := ClaimsFromContext(c)
-	if !ok || claims == nil || claims.Extension.UserID == "" {
-		return 0, false
+	if !ok || claims == nil || claims.Extension.UserID == "" || claims.Subject == "" {
+		return 0, "", false
 	}
 
 	userID, err := strconv.ParseUint(claims.Extension.UserID, 10, 64)
 	if err != nil || userID == 0 {
-		return 0, false
+		return 0, "", false
 	}
-	return userID, true
+	return userID, claims.Subject, true
 }

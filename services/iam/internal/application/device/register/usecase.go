@@ -73,6 +73,7 @@ func New(
 func (u *Usecase) Register(
 	ctx context.Context,
 	userID user.ID,
+	userExternalID string,
 	req *Request,
 ) (*Response, error) {
 	err := u.validateInput(userID, req)
@@ -115,7 +116,7 @@ func (u *Usecase) Register(
 	var mappedErr error
 	err = u.db.Transaction(ctx, sql.TxSourcePrimary, func(dbCtx context.Context) error {
 		if storedUser == nil {
-			mappedErr = u.createUser(dbCtx, userID, passwordHash, req)
+			mappedErr = u.createUser(dbCtx, userID, userExternalID, passwordHash, req)
 		} else {
 			mappedErr = u.lockAndCheck(dbCtx, userID, storedUser)
 		}
@@ -136,25 +137,51 @@ func (u *Usecase) Register(
 	}, nil
 }
 
-// mapTransactionError converts an error of the database transaction to an
-// error of this use case. A lock conflict, for example a deadlock at commit, is
-// temporary. The client can try again. mapUnknownError converts any other
-// error.
-func (u *Usecase) mapTransactionError(ctx context.Context, err error) error {
-	if sql.IsLockConflict(err) {
-		return ErrBusy
+func (u *Usecase) validateInput(userID user.ID, req *Request) error {
+	if req == nil {
+		return ErrRequestInvalid
 	}
-	return u.mapUnknownError(ctx, "failed to run the register transaction", err)
+	// The client sends the SHA-256 digest of the password, not the password.
+	// Thus, a password of a different length does not come from a valid client.
+	if userID == 0 ||
+		!user.IsValidUsername(req.Username) ||
+		len(req.Password) != sha256.Size ||
+		!isValidLength(req.PhoneHash, user.MaxPhoneHashLength) ||
+		!isValidLength(req.DeviceName, device.MaxNameLength) ||
+		req.PhoneTail == 0 {
+		return ErrRequestInvalid
+	}
+
+	// A key that is not valid is an error of the client. The error wraps the
+	// cause for errors.Is. The HTTP adapter does not send the cause to the client.
+	err := ticket.ValidateIdentity(req.DeviceIdentityPub)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrRequestInvalid, err)
+	}
+
+	err = u.keyDeriver.ValidatePeerPub(req.DevicePeerPub)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrRequestInvalid, err)
+	}
+	return nil
+}
+
+// isValidLength reports whether value has a length in [1, limit].
+func isValidLength[T ~string | ~[]byte](value T, limit int) bool {
+	length := len(value)
+	return length > 0 && length <= limit
 }
 
 func (u *Usecase) createUser(
 	dbCtx context.Context,
 	userID user.ID,
+	userExternalID string,
 	passwordHash []byte,
 	req *Request,
 ) error {
 	err := u.userWriter.Create(dbCtx, user.Info{
 		ID:           userID,
+		ExternalID:   userExternalID,
 		Username:     req.Username,
 		PasswordHash: passwordHash,
 		PhoneHash:    req.PhoneHash,
@@ -263,6 +290,17 @@ func (u *Usecase) lockAndCheck(
 	return nil
 }
 
+// mapTransactionError converts an error of the database transaction to an
+// error of this use case. A lock conflict, for example a deadlock at commit, is
+// temporary. The client can try again. mapUnknownError converts any other
+// error.
+func (u *Usecase) mapTransactionError(ctx context.Context, err error) error {
+	if sql.IsLockConflict(err) {
+		return ErrBusy
+	}
+	return u.mapUnknownError(ctx, "failed to run the register transaction", err)
+}
+
 // mapReadError converts an error of the user reader to an error of this use
 // case. A lock conflict is temporary. The client can try again.
 // mapUnknownError converts any other error.
@@ -282,19 +320,13 @@ func (u *Usecase) mapUnknownError(ctx context.Context, message string, err error
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return ErrBusy
 	}
-	u.logError(ctx, message, err)
-	return ErrInternal
-}
 
-// logError logs err at the error level. If the client canceled the request,
-// logError logs err at the debug level, because the failure is then not a
-// server error.
-func (u *Usecase) logError(ctx context.Context, message string, err error) {
 	if errors.Is(ctx.Err(), context.Canceled) {
 		u.logger.Debug(message, zap.Error(err))
-		return
+	} else {
+		u.logger.Error(message, zap.Error(err))
 	}
-	u.logger.Error(message, zap.Error(err))
+	return ErrInternal
 }
 
 // mapPasswordError converts an error of the password hasher to an error of
@@ -313,39 +345,4 @@ func (u *Usecase) mapPasswordError(err error) error {
 		u.logger.Error("failed to hash or verify password", zap.Error(err))
 		return ErrInternal
 	}
-}
-
-func (u *Usecase) validateInput(userID user.ID, req *Request) error {
-	if req == nil {
-		return ErrRequestInvalid
-	}
-	// The client sends the SHA-256 digest of the password, not the password.
-	// Thus, a password of a different length does not come from a valid client.
-	if userID == 0 ||
-		!user.IsValidUsername(req.Username) ||
-		len(req.Password) != sha256.Size ||
-		!isValidLength(req.PhoneHash, user.MaxPhoneHashLength) ||
-		!isValidLength(req.DeviceName, device.MaxNameLength) ||
-		req.PhoneTail == 0 {
-		return ErrRequestInvalid
-	}
-
-	// A key that is not valid is an error of the client. The error wraps the
-	// cause for errors.Is. The HTTP adapter does not send the cause to the client.
-	err := ticket.ValidateIdentity(req.DeviceIdentityPub)
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrRequestInvalid, err)
-	}
-
-	err = u.keyDeriver.ValidatePeerPub(req.DevicePeerPub)
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrRequestInvalid, err)
-	}
-	return nil
-}
-
-// isValidLength reports whether value has a length in [1, limit].
-func isValidLength[T ~string | ~[]byte](value T, limit int) bool {
-	length := len(value)
-	return length > 0 && length <= limit
 }

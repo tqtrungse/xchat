@@ -31,14 +31,14 @@ import (
 func requireAuthenticatedUser(
 	c *gin.Context,
 	rejections *reject.Stats[rejection.Reason],
-) (uint64, bool) {
-	userID, authenticated := httpx.AuthenticatedUserID(c)
+) (uint64, string, bool) {
+	userID, userExternalID, authenticated := httpx.AuthenticatedUserID(c)
 	if !authenticated {
 		rejections.Record(rejection.AuthToken, httpx.ErrAuthVerify)
 		httpx.RespondInvalidToken(c)
-		return 0, false
+		return 0, "", false
 	}
-	return userID, true
+	return userID, userExternalID, true
 }
 
 // withTimeout gives a copy of ctx with a deadline after timeout. If timeout is

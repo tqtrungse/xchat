@@ -282,8 +282,22 @@ func TestIssueDeviceTicketRejectsRequest(t *testing.T) {
 			},
 		},
 		{
+			// The token has a subject. Thus only the empty user ID rejects it.
 			name:       "empty user id",
-			claims:     &jwt.ExtClaims[httpx.Claims]{},
+			claims:     testTokenWithSubject("", testSubject),
+			body:       validIssueDeviceTicketBody,
+			wantStatus: nethttp.StatusUnauthorized,
+			wantJSON:   `{"error":"invalid_token","error_description":"failed to verify token"}`,
+			wantRejections: map[rejection.Reason]uint64{
+				rejection.AuthToken: 1,
+			},
+		},
+		{
+			// The token has a valid user ID. Thus only the empty subject rejects
+			// it. The ticket handler does not use the subject, but each handler
+			// shares requireAuthenticatedUser.
+			name:       "empty subject",
+			claims:     testTokenWithSubject("42", ""),
 			body:       validIssueDeviceTicketBody,
 			wantStatus: nethttp.StatusUnauthorized,
 			wantJSON:   `{"error":"invalid_token","error_description":"failed to verify token"}`,

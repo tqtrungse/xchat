@@ -72,7 +72,7 @@ func (h *IssueDeviceTicketHandler) Mount(group *gin.RouterGroup) {
 }
 
 func (h *IssueDeviceTicketHandler) handle(c *gin.Context) {
-	userID, authenticated := requireAuthenticatedUser(c, h.rejections)
+	userID, _, authenticated := requireAuthenticatedUser(c, h.rejections)
 	if !authenticated {
 		return
 	}

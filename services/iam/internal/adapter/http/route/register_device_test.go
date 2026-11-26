@@ -186,16 +186,17 @@ func newRegisterDeviceFixtureWithTimeout(
 }
 
 // expectRegister sets the call that the use case must receive for the valid
-// body of the tests. The call returns resp and err. check can inspect the
-// request. It runs before the handler clears the buffers of the request.
+// body of the tests. The external ID must be the "sub" claim of testToken. The
+// call returns resp and err. check can inspect the request. It runs before the
+// handler clears the buffers of the request.
 func (f *registerDeviceFixture) expectRegister(
 	check func(req *register.Request),
 	resp *register.Response,
 	err error,
 ) {
 	f.usecase.EXPECT().
-		Register(gomock.Not(gomock.Nil()), user.ID(42), gomock.Any()).
-		DoAndReturn(func(_ context.Context, _ user.ID, req *register.Request) (*register.Response, error) {
+		Register(gomock.Not(gomock.Nil()), user.ID(42), testSubject, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ user.ID, _ string, req *register.Request) (*register.Response, error) {
 			if check != nil {
 				check(req)
 			}
@@ -275,8 +276,21 @@ func TestRegisterDeviceRejectsRequest(t *testing.T) {
 			},
 		},
 		{
+			// The token has a subject. Thus only the empty user ID rejects it.
 			name:       "empty user id",
-			claims:     &jwt.ExtClaims[httpx.Claims]{},
+			claims:     testTokenWithSubject("", testSubject),
+			body:       validRegisterDeviceBody,
+			wantStatus: nethttp.StatusUnauthorized,
+			wantJSON:   `{"error":"invalid_token","error_description":"failed to verify token"}`,
+			wantRejections: map[rejection.Reason]uint64{
+				rejection.AuthToken: 1,
+			},
+		},
+		{
+			// The token has a valid user ID. Thus only the empty subject rejects
+			// it. The handler needs the "sub" claim as the external ID of the user.
+			name:       "empty subject",
+			claims:     testTokenWithSubject("42", ""),
 			body:       validRegisterDeviceBody,
 			wantStatus: nethttp.StatusUnauthorized,
 			wantJSON:   `{"error":"invalid_token","error_description":"failed to verify token"}`,
@@ -491,8 +505,8 @@ func TestRegisterDeviceUsecaseDeadline(t *testing.T) {
 
 			var usecaseCtx context.Context
 			f.usecase.EXPECT().
-				Register(gomock.Any(), user.ID(42), gomock.Any()).
-				DoAndReturn(func(ctx context.Context, _ user.ID, _ *register.Request) (*register.Response, error) {
+				Register(gomock.Any(), user.ID(42), testSubject, gomock.Any()).
+				DoAndReturn(func(ctx context.Context, _ user.ID, _ string, _ *register.Request) (*register.Response, error) {
 					usecaseCtx = ctx
 					deadline, hasDeadline := ctx.Deadline()
 					require.Equal(t, test.wantDeadline, hasDeadline)

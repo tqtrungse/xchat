@@ -34,11 +34,24 @@ func newTestDepsWithLog(t *testing.T) (*log.Logger, *reject.Stats[rejection.Reas
 	return logger, reject.New[rejection.Reason](logger, time.Hour, rejection.Names()), path
 }
 
-// testToken gives a verified token with userID in the ext claim.
+// testSubject is the "sub" claim of testToken. The register handler gives it
+// to the use case as the external ID of the user.
+const testSubject = "auth0|external-42"
+
+// testToken gives a verified token with testSubject in the "sub" claim and
+// userID in the ext claim.
 func testToken(userID string) *jwt.ExtClaims[httpx.Claims] {
-	return &jwt.ExtClaims[httpx.Claims]{
+	return testTokenWithSubject(userID, testSubject)
+}
+
+// testTokenWithSubject gives a verified token with subject in the "sub" claim
+// and userID in the ext claim.
+func testTokenWithSubject(userID string, subject string) *jwt.ExtClaims[httpx.Claims] {
+	claims := &jwt.ExtClaims[httpx.Claims]{
 		Extension: httpx.Claims{
 			UserID: userID,
 		},
 	}
+	claims.Subject = subject
+	return claims
 }

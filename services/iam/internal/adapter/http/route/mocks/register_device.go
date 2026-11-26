@@ -43,16 +43,16 @@ func (m *MockDeviceRegisterer) EXPECT() *MockDeviceRegistererMockRecorder {
 }
 
 // Register mocks base method.
-func (m *MockDeviceRegisterer) Register(ctx context.Context, userID user.ID, req *register.Request) (*register.Response, error) {
+func (m *MockDeviceRegisterer) Register(ctx context.Context, userID user.ID, userExternalID string, req *register.Request) (*register.Response, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Register", ctx, userID, req)
+	ret := m.ctrl.Call(m, "Register", ctx, userID, userExternalID, req)
 	ret0, _ := ret[0].(*register.Response)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Register indicates an expected call of Register.
-func (mr *MockDeviceRegistererMockRecorder) Register(ctx, userID, req any) *gomock.Call {
+func (mr *MockDeviceRegistererMockRecorder) Register(ctx, userID, userExternalID, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Register", reflect.TypeOf((*MockDeviceRegisterer)(nil).Register), ctx, userID, req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Register", reflect.TypeOf((*MockDeviceRegisterer)(nil).Register), ctx, userID, userExternalID, req)
 }

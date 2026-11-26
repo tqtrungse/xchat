@@ -40,6 +40,7 @@ type DeviceRegisterer interface {
 	Register(
 		ctx context.Context,
 		userID user.ID,
+		userExternalID string,
 		req *register.Request,
 	) (*register.Response, error)
 }
@@ -78,7 +79,7 @@ func (h *RegisterDeviceHandler) Mount(group *gin.RouterGroup) {
 }
 
 func (h *RegisterDeviceHandler) handle(c *gin.Context) {
-	userID, authenticated := requireAuthenticatedUser(c, h.rejections)
+	userID, userExternalID, authenticated := requireAuthenticatedUser(c, h.rejections)
 	if !authenticated {
 		return
 	}
@@ -100,7 +101,7 @@ func (h *RegisterDeviceHandler) handle(c *gin.Context) {
 	ctx, cancel := withTimeout(c.Request.Context(), h.timeout)
 	defer cancel()
 
-	resp, err := h.usecase.Register(ctx, user.ID(userID), &req)
+	resp, err := h.usecase.Register(ctx, user.ID(userID), userExternalID, &req)
 	if err != nil {
 		respondUsecaseFailure(
 			c,
