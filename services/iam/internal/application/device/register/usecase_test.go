@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -67,10 +68,26 @@ func TestDeviceRegisterValidate(t *testing.T) {
 			wantErr: ErrRequestInvalid,
 		},
 		{
+			name:   "empty password",
+			userID: 1,
+			prepare: func(req *Request) {
+				req.Password = nil
+			},
+			wantErr: ErrRequestInvalid,
+		},
+		{
+			name:   "short password",
+			userID: 1,
+			prepare: func(req *Request) {
+				req.Password = bytes.Repeat([]byte{'p'}, sha256.Size-1)
+			},
+			wantErr: ErrRequestInvalid,
+		},
+		{
 			name:   "long password",
 			userID: 1,
 			prepare: func(req *Request) {
-				req.Password = bytes.Repeat([]byte{'p'}, maxInputPasswordLength+1)
+				req.Password = bytes.Repeat([]byte{'p'}, sha256.Size+1)
 			},
 			wantErr: ErrRequestInvalid,
 		},
@@ -221,7 +238,7 @@ func TestDeviceRegisterRegisterExistingUserCredentialError(t *testing.T) {
 func validRegisterRequest(publicKey ed25519.PublicKey) *Request {
 	return &Request{
 		Username:          "username",
-		Password:          bytes.Repeat([]byte{'p'}, maxInputPasswordLength),
+		Password:          bytes.Repeat([]byte{'p'}, sha256.Size),
 		PhoneHash:         bytes.Repeat([]byte{'h'}, user.MaxPhoneHashLength),
 		PhoneTail:         123,
 		DeviceName:        "device",

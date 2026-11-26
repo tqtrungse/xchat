@@ -314,9 +314,11 @@ func (u *Usecase) validateInput(userID user.ID, req *Request) error {
 	if req == nil {
 		return ErrRequestInvalid
 	}
+	// The client sends the SHA-256 digest of the password, not the password.
+	// Thus, a password of a different length does not come from a valid client.
 	if userID == 0 ||
 		!isValidLength(req.Username, user.MaxUsernameLength) ||
-		!isValidLength(req.Password, sha256.Size) ||
+		len(req.Password) != sha256.Size ||
 		!isValidLength(req.PhoneHash, user.MaxPhoneHashLength) ||
 		!isValidLength(req.DeviceName, device.MaxNameLength) ||
 		req.PhoneTail == 0 {
