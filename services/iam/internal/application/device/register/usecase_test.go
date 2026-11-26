@@ -796,7 +796,7 @@ func TestDeviceRegisterMapReadErrorLogLevel(t *testing.T) {
 			defer cancel()
 
 			usecase := &Usecase{logger: logger}
-			err := usecase.mapReadError(ctx, tc.readErr)
+			err := usecase.mapDatabaseError(ctx, "failed to read user", tc.readErr)
 			require.ErrorIs(t, err, tc.wantErr)
 
 			require.NoError(t, logger.Sync())

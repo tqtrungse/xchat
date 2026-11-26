@@ -98,7 +98,7 @@ func (u *Usecase) Register(
 		return err
 	})
 	if err != nil {
-		return nil, u.mapReadError(ctx, err)
+		return nil, u.mapDatabaseError(ctx, "failed to read user", err)
 	}
 
 	if storedUser == nil {
@@ -130,7 +130,7 @@ func (u *Usecase) Register(
 		return nil, mappedErr
 	}
 	if err != nil {
-		return nil, u.mapTransactionError(ctx, err)
+		return nil, u.mapDatabaseError(ctx, "failed to run the register transaction", err)
 	}
 	return &Response{
 		DeviceID: deviceID.String(),
@@ -185,9 +185,6 @@ func (u *Usecase) createUser(
 	if err == nil {
 		return nil
 	}
-	if sql.IsLockConflict(err) {
-		return ErrBusy
-	}
 	// Another request created the user with the same ID after the first
 	// read. A new try finds the user and can succeed.
 	if errors.Is(err, user.ErrAlreadyExists) {
@@ -198,7 +195,7 @@ func (u *Usecase) createUser(
 	if errors.Is(err, user.ErrUniqueConflict) {
 		return ErrUserExists
 	}
-	return u.mapUnknownError(dbCtx, "failed to register user", err)
+	return u.mapDatabaseError(dbCtx, "failed to register user", err)
 }
 
 func (u *Usecase) createDevice(
@@ -218,15 +215,12 @@ func (u *Usecase) createDevice(
 	if err == nil {
 		return nil
 	}
-	if sql.IsLockConflict(err) {
-		return ErrBusy
-	}
 	// A device with the same unique value, such as the identity public
 	// key, exists. A new try cannot succeed.
 	if errors.Is(err, device.ErrAlreadyExists) {
 		return ErrDeviceExists
 	}
-	return u.mapUnknownError(dbCtx, "failed to register device", err)
+	return u.mapDatabaseError(dbCtx, "failed to register device", err)
 }
 
 func (u *Usecase) verifyCredentials(
@@ -261,7 +255,7 @@ func (u *Usecase) lockAndCheck(
 ) error {
 	locked, err := u.userReader.Get(dbCtx, userID, true)
 	if err != nil {
-		return u.mapReadError(dbCtx, err)
+		return u.mapDatabaseError(dbCtx, "failed to read user", err)
 	}
 	if locked == nil {
 		return ErrBusy
@@ -284,25 +278,15 @@ func (u *Usecase) lockAndCheck(
 	return nil
 }
 
-// mapTransactionError converts an error of the database transaction to an
-// error of this use case. A lock conflict, for example a deadlock at commit, is
-// temporary. The client can try again. mapUnknownError converts any other
-// error.
-func (u *Usecase) mapTransactionError(ctx context.Context, err error) error {
+// mapDatabaseError converts an error of the database to an error of this use
+// case. A lock conflict, for example a deadlock at commit, is temporary. The
+// client can try again. mapUnknownError converts any other error. message is
+// the log message for a server error.
+func (u *Usecase) mapDatabaseError(ctx context.Context, message string, err error) error {
 	if sql.IsLockConflict(err) {
 		return ErrBusy
 	}
-	return u.mapUnknownError(ctx, "failed to run the register transaction", err)
-}
-
-// mapReadError converts an error of the user reader to an error of this use
-// case. A lock conflict is temporary. The client can try again.
-// mapUnknownError converts any other error.
-func (u *Usecase) mapReadError(ctx context.Context, err error) error {
-	if sql.IsLockConflict(err) {
-		return ErrBusy
-	}
-	return u.mapUnknownError(ctx, "failed to read user", err)
+	return u.mapUnknownError(ctx, message, err)
 }
 
 // mapUnknownError converts an error that this use case does not define to an
