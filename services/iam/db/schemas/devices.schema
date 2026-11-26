@@ -2,7 +2,7 @@ create_table   :devices,
     options:   'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
     collation: 'utf8mb4_0900_as_ci',
     force:     :cascade,
-    id:        { type: :bigint, unsigned: true, auto_increment: false } do |t|
+    id:        { type: :bigint, unsigned: true, default: nil } do |t| # default: nil gives no AUTO_INCREMENT
 
     t.bigint  :user_id,       unsigned: true, null: false
     t.string  :name,          limit: 128,     null: false             # Device type + OS name
@@ -10,8 +10,8 @@ create_table   :devices,
     t.binary  :peer_pub,      limit: 32,      null: false             # x25519
     t.binary  :identity_pub,  limit: 32,      null: false             # ed25519.GenerateKey(rand.Reader)
 
-    t.datetime :created_at, precision: 3,  null: false
-    t.datetime :updated_at, precision: 3,  null: false
+    t.datetime :created_at, precision: 3,  null: false, default: -> { 'CURRENT_TIMESTAMP(3)' }
+    t.datetime :updated_at, precision: 3,  null: false, default: -> { 'CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)' }
     t.datetime :deleted_at, precision: 3
     t.datetime "seen_at",   precision: 3,  null: true
 
@@ -25,11 +25,10 @@ create_table   :devices,
       name:   'unique_index_devices_on_identity_pub',
       unique: true
 
-    t.foreign_key    :users,
-        column:      :user_id,
-        primary_key: :id,
-        name:        'fk_devices_users'
-end
+    t.check_constraint 'length(`peer_pub`) = 32',     name: 'check_devices_peer_pub_length'
+    t.check_constraint 'length(`identity_pub`) = 32', name: 'check_devices_identity_pub_length'
 
-execute 'ALTER TABLE devices MODIFY created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3) NOT NULL;'
-execute 'ALTER TABLE devices MODIFY updated_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) NOT NULL;'
+    # The column is user_id and the primary key is id by default. Ridgepole
+    # compares the options as written, so an explicit default gives a diff.
+    t.foreign_key :users, name: 'fk_devices_users'
+end
