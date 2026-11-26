@@ -6,8 +6,8 @@
 package crypto
 
 import (
+	"bytes"
 	"crypto/ecdh"
-	"crypto/rand"
 	"fmt"
 
 	"xchat/services/internal/shared/crypto"
@@ -20,6 +20,11 @@ var x25519Prime = [crypto.X25519PublicKeySize]byte{
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f,
 }
+
+// testPrivateKey is the scalar of the test ECDH. Each clamped scalar gives
+// the same result, so a fixed scalar is sufficient. It is not a secret:
+// ValidatePeerPub discards the shared secret.
+var testPrivateKey, _ = ecdh.X25519().NewPrivateKey(bytes.Repeat([]byte{0x42}, 32))
 
 type X25519 struct{}
 
@@ -34,11 +39,11 @@ func NewX25519() X25519 {
 // two different byte strings for the same identity, so the check rejects the
 // others.
 //
-// The check runs a test ECDH with a new private key. A low-order point gives an
-// all-zero shared secret, and ECDH reports that as an error. The private key
-// does not change the result: RFC 7748 clamps the scalar to a multiple of 8,
-// and a low-order point gives an all-zero secret for every such scalar. The
-// private key is not stored, so each call is independent of the others.
+// The check runs a test ECDH with testPrivateKey. A low-order point gives an
+// all-zero shared secret, and ECDH reports that as an error. The scalar does
+// not change the result: RFC 7748 clamps each scalar to a multiple of 8, and a
+// low-order point gives an all-zero secret for every such scalar. Any other
+// point gives an all-zero secret for no clamped scalar.
 func (x *X25519) ValidatePeerPub(publicKey []byte) error {
 	if len(publicKey) != crypto.X25519PublicKeySize {
 		return ErrX25519InvalidPeerPub
@@ -52,12 +57,7 @@ func (x *X25519) ValidatePeerPub(publicKey []byte) error {
 		return fmt.Errorf("%w: %w", ErrX25519InvalidPeerPub, err)
 	}
 
-	privateKey, err := ecdh.X25519().GenerateKey(rand.Reader)
-	if err != nil {
-		return fmt.Errorf("generate X25519 test key: %w", err)
-	}
-
-	_, err = privateKey.ECDH(peerPublicKey)
+	_, err = testPrivateKey.ECDH(peerPublicKey)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrX25519InvalidDerive, err)
 	}
