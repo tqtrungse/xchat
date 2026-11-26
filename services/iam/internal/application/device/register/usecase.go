@@ -216,10 +216,13 @@ func (u *Usecase) verifyCredentials(
 	// The password check always runs, even if the username or the phone is
 	// wrong. Therefore, the response time does not show the cause.
 	err := u.passwordHasher.Verify(ctx, req.Password, storedUser.PasswordHash)
-
-	identityOK := subtle.ConstantTimeCompare(bytesconv.StringToBytes(req.Username), bytesconv.StringToBytes(storedUser.Username)) == 1 &&
-		subtle.ConstantTimeCompare(req.PhoneHash, storedUser.PhoneHash) == 1 &&
-		req.PhoneTail == storedUser.PhoneTail
+	usernameMatch := subtle.ConstantTimeCompare(
+		bytesconv.StringToBytes(req.Username),
+		bytesconv.StringToBytes(storedUser.Username),
+	)
+	phoneHashMatch := subtle.ConstantTimeCompare(req.PhoneHash, storedUser.PhoneHash)
+	phoneTailMatch := subtle.ConstantTimeEq(int32(req.PhoneTail), int32(storedUser.PhoneTail))
+	identityOK := usernameMatch&phoneHashMatch&phoneTailMatch == 1
 
 	if err != nil {
 		return u.mapPasswordError(err)
