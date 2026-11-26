@@ -68,6 +68,16 @@ func TestDeviceRegisterValidate(t *testing.T) {
 			wantErr: ErrRequestInvalid,
 		},
 		{
+			// user.IsValidUsername has the full list of cases. This case checks
+			// that validateInput calls it.
+			name:   "upper case username",
+			userID: 1,
+			prepare: func(req *Request) {
+				req.Username = "Username"
+			},
+			wantErr: ErrRequestInvalid,
+		},
+		{
 			name:   "empty password",
 			userID: 1,
 			prepare: func(req *Request) {

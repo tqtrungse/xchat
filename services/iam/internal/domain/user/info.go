@@ -8,7 +8,6 @@ package user
 import "time"
 
 const (
-	MaxUsernameLength  = 128
 	MaxPhoneHashLength = 16
 
 	maxDevices = 5
