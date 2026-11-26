@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"fmt"
 
 	"xchat/services/iam/internal/domain/device"
 	"xchat/services/iam/internal/domain/user"
@@ -85,6 +86,7 @@ func (u *Usecase) Register(
 		u.logger.Error("failed to generate ID", zap.Error(err))
 		return nil, ErrInternal
 	}
+	deviceID := device.ID(id)
 
 	var (
 		storedUser   *user.Info
@@ -100,12 +102,11 @@ func (u *Usecase) Register(
 	}
 
 	if storedUser == nil {
-		passwordHash, err = u.passwordHasher.Hash(ctx, req.Password)
-	} else {
-		err = u.verifyCredentials(ctx, storedUser, req)
-	}
-	if err != nil {
-		return nil, u.mapPasswordError(err)
+		if passwordHash, err = u.passwordHasher.Hash(ctx, req.Password); err != nil {
+			return nil, u.mapPasswordError(err)
+		}
+	} else if err = u.verifyCredentials(ctx, storedUser, req); err != nil {
+		return nil, err
 	}
 
 	// The callback returns only errors of this use case. Transaction can also
@@ -122,7 +123,7 @@ func (u *Usecase) Register(
 		if mappedErr != nil {
 			return mappedErr
 		}
-		mappedErr = u.createDevice(dbCtx, userID, device.ID(id), req)
+		mappedErr = u.createDevice(dbCtx, userID, deviceID, req)
 		return mappedErr
 	})
 	if mappedErr != nil {
@@ -132,7 +133,7 @@ func (u *Usecase) Register(
 		return nil, u.mapTransactionError(ctx, err)
 	}
 	return &Response{
-		DeviceID: device.ID(id).String(),
+		DeviceID: deviceID.String(),
 	}, nil
 }
 
@@ -215,14 +216,14 @@ func (u *Usecase) verifyCredentials(
 ) error {
 	// The password check always runs, even if the username or the phone is
 	// wrong. Therefore, the response time does not show the cause.
-	verifyErr := u.passwordHasher.Verify(ctx, req.Password, storedUser.PasswordHash)
+	err := u.passwordHasher.Verify(ctx, req.Password, storedUser.PasswordHash)
 
 	identityOK := subtle.ConstantTimeCompare(bytesconv.StringToBytes(req.Username), bytesconv.StringToBytes(storedUser.Username)) == 1 &&
 		subtle.ConstantTimeCompare(req.PhoneHash, storedUser.PhoneHash) == 1 &&
 		req.PhoneTail == storedUser.PhoneTail
 
-	if verifyErr != nil {
-		return u.mapPasswordError(verifyErr)
+	if err != nil {
+		return u.mapPasswordError(err)
 	}
 	if !identityOK {
 		return ErrRequestInvalid
@@ -323,12 +324,18 @@ func (u *Usecase) validateInput(userID user.ID, req *Request) error {
 		return ErrRequestInvalid
 	}
 
+	// A key that is not valid is an error of the client. The error wraps the
+	// cause for errors.Is. The HTTP adapter does not send the cause to the client.
 	err := ticket.ValidateIdentity(req.DeviceIdentityPub)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrRequestInvalid, err)
 	}
 
-	return u.keyDeriver.ValidatePeerPub(req.DevicePeerPub)
+	err = u.keyDeriver.ValidatePeerPub(req.DevicePeerPub)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrRequestInvalid, err)
+	}
+	return nil
 }
 
 // isValidLength reports whether value has a length in [1, limit].

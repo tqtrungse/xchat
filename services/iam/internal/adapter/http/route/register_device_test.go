@@ -358,6 +358,17 @@ func TestRegisterDeviceUsecaseErrors(t *testing.T) {
 			},
 		},
 		{
+			// The use case wraps the cause of a key that is not valid. The
+			// response does not contain the text of the cause.
+			name:       "invalid key wraps its cause",
+			err:        fmt.Errorf("%w: %w", register.ErrRequestInvalid, errors.New("invalid identity public key")),
+			wantStatus: nethttp.StatusBadRequest,
+			wantJSON:   `{"error":"invalid_request","error_description":"invalid client request"}`,
+			wantRejections: map[rejection.Reason]uint64{
+				rejection.RequestBody: 1,
+			},
+		},
+		{
 			name:       "user locked",
 			err:        register.ErrUserLocked,
 			wantStatus: nethttp.StatusForbidden,

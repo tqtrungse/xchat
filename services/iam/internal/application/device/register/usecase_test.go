@@ -46,6 +46,8 @@ func TestDeviceRegisterValidate(t *testing.T) {
 		prepare    func(req *Request)
 		deriverErr error
 		wantErr    error
+		// wantCause is the error that wantErr wraps. Optional.
+		wantCause error
 	}{
 		{
 			name:   "valid",
@@ -102,13 +104,15 @@ func TestDeviceRegisterValidate(t *testing.T) {
 			prepare: func(req *Request) {
 				req.DeviceIdentityPub = nil
 			},
-			wantErr: ticket.ErrIdentityPubInvalid,
+			wantErr:   ErrRequestInvalid,
+			wantCause: ticket.ErrIdentityPubInvalid,
 		},
 		{
 			name:       "invalid peer public key",
 			userID:     1,
 			deriverErr: peerErr,
-			wantErr:    peerErr,
+			wantErr:    ErrRequestInvalid,
+			wantCause:  peerErr,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -132,6 +136,84 @@ func TestDeviceRegisterValidate(t *testing.T) {
 				return
 			}
 			require.ErrorIs(t, validationErr, test.wantErr)
+			if test.wantCause != nil {
+				require.ErrorIs(t, validationErr, test.wantCause)
+			}
+		})
+	}
+}
+
+// TestDeviceRegisterRegisterRejectsInvalidKey checks that Register gives
+// ErrRequestInvalid for a key that is not valid. The user reader has no
+// expectation, so a read of the user fails the test.
+func TestDeviceRegisterRegisterRejectsInvalidKey(t *testing.T) {
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	f := newRegisterFixture(t, nil, nil)
+	req := validRegisterRequest(publicKey)
+	req.DeviceIdentityPub = bytes.Repeat([]byte{0}, ed25519.PublicKeySize)
+
+	resp, err := f.register.Register(context.Background(), 1, req)
+	require.ErrorIs(t, err, ErrRequestInvalid)
+	require.ErrorIs(t, err, ticket.ErrIdentityPubInvalid)
+	require.Nil(t, resp)
+}
+
+// TestDeviceRegisterRegisterExistingUserCredentialError checks that Register
+// maps each error of the credential check of an existing user one time. The
+// transaction does not run, so the use case writes no device.
+func TestDeviceRegisterRegisterExistingUserCredentialError(t *testing.T) {
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	req := validRegisterRequest(publicKey)
+	storedUser := &user.Info{
+		ID:        1,
+		Username:  req.Username,
+		PhoneHash: req.PhoneHash,
+		PhoneTail: req.PhoneTail,
+		State:     user.StateActive,
+	}
+	otherUsername := *storedUser
+	otherUsername.Username = "other"
+
+	for _, test := range []struct {
+		name       string
+		storedUser *user.Info
+		verifyErr  error
+		wantErr    error
+	}{
+		{
+			name:       "password mismatch",
+			storedUser: storedUser,
+			verifyErr:  ErrPasswordMismatch,
+			wantErr:    ErrRequestInvalid,
+		},
+		{
+			name:       "password hasher busy",
+			storedUser: storedUser,
+			verifyErr:  fmt.Errorf("%w: %w", ErrPasswordHasherBusy, context.DeadlineExceeded),
+			wantErr:    ErrBusy,
+		},
+		{
+			name:       "username mismatch",
+			storedUser: &otherUsername,
+			wantErr:    ErrRequestInvalid,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newRegisterFixture(t, nil, nil)
+			f.expectRead(false, test.storedUser, nil)
+			f.passwordHasher.EXPECT().
+				Verify(gomock.Any(), req.Password, test.storedUser.PasswordHash).
+				Return(test.verifyErr)
+
+			resp, err := f.register.Register(context.Background(), 1, req)
+			require.ErrorIs(t, err, test.wantErr)
+			require.NotErrorIs(t, err, ErrInternal)
+			require.Nil(t, resp)
+			require.Empty(t, f.devices)
 		})
 	}
 }
