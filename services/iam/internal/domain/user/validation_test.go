@@ -6,6 +6,7 @@
 package user
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -32,12 +33,12 @@ func TestIsValidUsername(t *testing.T) {
 		},
 		{
 			name:     "minimum length",
-			username: strings.Repeat("a", MinUsernameLength),
+			username: strings.Repeat("a", minUsernameLength),
 			want:     true,
 		},
 		{
 			name:     "maximum length",
-			username: strings.Repeat("a", MaxUsernameLength),
+			username: strings.Repeat("a", maxUsernameLength),
 			want:     true,
 		},
 		{
@@ -47,12 +48,12 @@ func TestIsValidUsername(t *testing.T) {
 		},
 		{
 			name:     "too short",
-			username: strings.Repeat("a", MinUsernameLength-1),
+			username: strings.Repeat("a", minUsernameLength-1),
 			want:     false,
 		},
 		{
 			name:     "too long",
-			username: strings.Repeat("a", MaxUsernameLength+1),
+			username: strings.Repeat("a", maxUsernameLength+1),
 			want:     false,
 		},
 		{
@@ -112,6 +113,55 @@ func TestIsValidUsername(t *testing.T) {
 			t.Parallel()
 
 			require.Equal(t, test.want, IsValidUsername(test.username))
+		})
+	}
+}
+
+func TestIsValidPhoneHash(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name      string
+		phoneHash []byte
+		want      bool
+	}{
+		{
+			name:      "exact length",
+			phoneHash: bytes.Repeat([]byte{0x01}, maxPhoneHashLength),
+			want:      true,
+		},
+		{
+			// A truncated HMAC always has the same length. A shorter value can
+			// collide with the hash of another phone.
+			name:      "one byte short",
+			phoneHash: bytes.Repeat([]byte{0x01}, maxPhoneHashLength-1),
+			want:      false,
+		},
+		{
+			name:      "one byte",
+			phoneHash: []byte{0x01},
+			want:      false,
+		},
+		{
+			name:      "nil",
+			phoneHash: nil,
+			want:      false,
+		},
+		{
+			name:      "empty",
+			phoneHash: []byte{},
+			want:      false,
+		},
+		{
+			name:      "one byte long",
+			phoneHash: bytes.Repeat([]byte{0x01}, maxPhoneHashLength+1),
+			want:      false,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, test.want, IsValidPhoneHash(test.phoneHash))
 		})
 	}
 }

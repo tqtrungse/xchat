@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -102,10 +101,12 @@ func TestDeviceRegisterValidate(t *testing.T) {
 			wantErr: ErrRequestInvalid,
 		},
 		{
-			name:   "long phone hash",
+			// user.IsValidPhoneHash has the length limits. An empty value is
+			// never valid, so this case checks that validateInput calls it.
+			name:   "empty phone hash",
 			userID: 1,
 			prepare: func(req *Request) {
-				req.PhoneHash = bytes.Repeat([]byte{'h'}, user.MaxPhoneHashLength+1)
+				req.PhoneHash = nil
 			},
 			wantErr: ErrRequestInvalid,
 		},
@@ -118,10 +119,12 @@ func TestDeviceRegisterValidate(t *testing.T) {
 			wantErr: ErrRequestInvalid,
 		},
 		{
-			name:   "long device name",
+			// device.IsValidName has the length limits. An empty value is never
+			// valid, so this case checks that validateInput calls it.
+			name:   "empty device name",
 			userID: 1,
 			prepare: func(req *Request) {
-				req.DeviceName = strings.Repeat("d", device.MaxNameLength+1)
+				req.DeviceName = ""
 			},
 			wantErr: ErrRequestInvalid,
 		},
@@ -245,17 +248,27 @@ func TestDeviceRegisterRegisterExistingUserCredentialError(t *testing.T) {
 	}
 }
 
-// testExternalID is the "sub" claim of the token in the tests. Register stores
-// it as the external ID of a new user.
-const testExternalID = "auth0|external-1"
+const (
+	// testExternalID is the "sub" claim of the token in the tests. Register
+	// stores it as the external ID of a new user.
+	testExternalID = "auth0|external-1"
 
+	// testPhoneHashLength is the length of a phone hash that the client sends:
+	// HMAC-SHA256 truncated to 128 bits. The user package does not export its
+	// limit. The tests of the user package check the limit.
+	testPhoneHashLength = 16
+)
+
+// validRegisterRequest gives a request that validateInput accepts. The device
+// name has the form that a real client sends: the model and the OS name, with
+// upper case letters and spaces.
 func validRegisterRequest(publicKey ed25519.PublicKey) *Request {
 	return &Request{
 		Username:          "username",
 		Password:          bytes.Repeat([]byte{'p'}, sha256.Size),
-		PhoneHash:         bytes.Repeat([]byte{'h'}, user.MaxPhoneHashLength),
+		PhoneHash:         bytes.Repeat([]byte{'h'}, testPhoneHashLength),
 		PhoneTail:         123,
-		DeviceName:        "device",
+		DeviceName:        "iPhone 15 iOS 18",
 		DeviceIdentityPub: publicKey,
 		DevicePeerPub:     bytes.Repeat([]byte{1}, 32),
 	}
@@ -270,7 +283,7 @@ func TestDeviceRegisterValidateUserPassword(t *testing.T) {
 
 	storedUser := user.Info{
 		Username:  "username",
-		PhoneHash: bytes.Repeat([]byte{'h'}, user.MaxPhoneHashLength),
+		PhoneHash: bytes.Repeat([]byte{'h'}, testPhoneHashLength),
 		PhoneTail: 123,
 	}
 	cause := errors.New("bcrypt: hash is corrupted")

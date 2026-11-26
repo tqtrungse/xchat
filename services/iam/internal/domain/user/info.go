@@ -7,11 +7,7 @@ package user
 
 import "time"
 
-const (
-	MaxPhoneHashLength = 16
-
-	maxDevices = 5
-)
+const maxDevices = 5
 
 type Info struct {
 	ID           ID

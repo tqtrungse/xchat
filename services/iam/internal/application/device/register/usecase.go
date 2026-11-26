@@ -144,10 +144,10 @@ func (u *Usecase) validateInput(userID user.ID, req *Request) error {
 	// The client sends the SHA-256 digest of the password, not the password.
 	// Thus, a password of a different length does not come from a valid client.
 	if userID == 0 ||
-		!user.IsValidUsername(req.Username) ||
 		len(req.Password) != sha256.Size ||
-		!isValidLength(req.PhoneHash, user.MaxPhoneHashLength) ||
-		!isValidLength(req.DeviceName, device.MaxNameLength) ||
+		!user.IsValidUsername(req.Username) ||
+		!user.IsValidPhoneHash(req.PhoneHash) ||
+		!device.IsValidName(req.DeviceName) ||
 		req.PhoneTail == 0 {
 		return ErrRequestInvalid
 	}
@@ -164,12 +164,6 @@ func (u *Usecase) validateInput(userID user.ID, req *Request) error {
 		return fmt.Errorf("%w: %w", ErrRequestInvalid, err)
 	}
 	return nil
-}
-
-// isValidLength reports whether value has a length in [1, limit].
-func isValidLength[T ~string | ~[]byte](value T, limit int) bool {
-	length := len(value)
-	return length > 0 && length <= limit
 }
 
 func (u *Usecase) createUser(

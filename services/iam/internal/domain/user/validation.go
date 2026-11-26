@@ -6,12 +6,13 @@
 package user
 
 const (
-	MinUsernameLength = 3
-	MaxUsernameLength = 64
+	minUsernameLength  = 3
+	maxUsernameLength  = 64
+	maxPhoneHashLength = 16
 )
 
 // IsValidUsername reports whether username has the canonical form. The form has
-// MinUsernameLength to MaxUsernameLength characters from a-z, 0-9, '.', '_',
+// minUsernameLength to maxUsernameLength characters from a-z, 0-9, '.', '_',
 // and '-'.
 //
 // The form has no upper case letter, so each name has one spelling. The users
@@ -20,7 +21,7 @@ const (
 // UTF-8. Each byte of a non-ASCII character in UTF-8 is 0x80 or more, so the
 // check rejects it.
 func IsValidUsername(username string) bool {
-	if len(username) < MinUsernameLength || len(username) > MaxUsernameLength {
+	if len(username) < minUsernameLength || len(username) > maxUsernameLength {
 		return false
 	}
 	for idx := 0; idx < len(username); idx++ {
@@ -36,4 +37,10 @@ func IsValidUsername(username string) bool {
 		}
 	}
 	return true
+}
+
+// IsValidPhoneHash reports whether phoneHash has exactly maxPhoneHashLength
+// bytes. The client sends HMAC-SHA256 truncated to 128 bits.
+func IsValidPhoneHash(phoneHash []byte) bool {
+	return len(phoneHash) == maxPhoneHashLength
 }
