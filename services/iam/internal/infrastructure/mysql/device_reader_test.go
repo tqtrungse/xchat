@@ -43,30 +43,27 @@ func Test_DeviceReader_GetMeta(t *testing.T) {
 	identityPub := make([]byte, 32)
 	_, _ = rand.Read(identityPub)
 
-	// The deleted_at condition makes sure that a deleted device is not found.
+	// One query reads the device and the state of its owner. Each column has
+	// its table name, because both tables have the columns id and state. The
+	// deleted_at condition makes sure that a deleted device is not found.
 	selectQuery := strings.Join([]string{
-		"SELECT `user_id`,`state`,`identity_pub`",
+		"SELECT users.id AS user_id,users.state AS user_state,devices.state,devices.identity_pub",
 		"FROM `devices`",
-		"WHERE id = ? AND `devices`.`deleted_at` IS NULL",
+		"INNER JOIN users ON users.id = devices.user_id",
+		"WHERE devices.id = ? AND `devices`.`deleted_at` IS NULL",
 		"LIMIT ?",
 	}, " ")
 	query := fmt.Sprintf("^%s$", regexp.QuoteMeta(selectQuery))
 	columns := []string{
 		"user_id",
+		"user_state",
 		"state",
 		"identity_pub",
 	}
 
-	// The preload reads the state of the user that owns the device.
-	preloadQuery := fmt.Sprintf("^%s$", regexp.QuoteMeta(
-		"SELECT `id`,`state` FROM `users` WHERE `users`.`id` = ?",
-	))
-	preloadColumns := []string{
-		"id",
-		"state",
-	}
-
 	testCases := map[string]testcase{
+		// The user state and the device state have different values. Thus the
+		// test finds a swap of the two columns.
 		"Success (found)": {
 			prepare: func(f *fields) {
 				f.sqlMock.
@@ -78,17 +75,9 @@ func Test_DeviceReader_GetMeta(t *testing.T) {
 					WillReturnRows(
 						sqlmock.NewRows(columns).AddRow(
 							uint64(123),
+							user.StateActive,
 							device.StateLocked,
 							identityPub,
-						),
-					)
-				f.sqlMock.
-					ExpectQuery(preloadQuery).
-					WithArgs(user.ID(123)).
-					WillReturnRows(
-						sqlmock.NewRows(preloadColumns).AddRow(
-							uint64(123),
-							user.StateActive,
 						),
 					)
 			},
@@ -169,5 +158,21 @@ func Test_DeviceReader_GetMeta(t *testing.T) {
 				t.Errorf("[datastore] deviceReader.GetMeta value is mismatch (-actual +expected):\n%s", diff)
 			}
 		})
+	}
+}
+
+// Test_DeviceReader_GetMeta_NoDB checks that GetMeta returns sql.ErrExtractDB
+// when the context has no DB handle. The context does not come from
+// Transaction or WithDB, so no query runs.
+func Test_DeviceReader_GetMeta_NoDB(t *testing.T) {
+	t.Parallel()
+
+	reader := NewDeviceReader()
+	ret, err := reader.GetMeta(t.Context(), device.ID(21))
+	if !errors.Is(err, sql.ErrExtractDB) {
+		t.Errorf("[datastore] deviceReader.GetMeta error = %v, want %v", err, sql.ErrExtractDB)
+	}
+	if ret != nil {
+		t.Errorf("[datastore] deviceReader.GetMeta value = %+v, want nil", ret)
 	}
 }

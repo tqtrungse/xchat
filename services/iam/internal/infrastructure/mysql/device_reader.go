@@ -11,6 +11,7 @@ import (
 
 	"xchat/services/iam/internal/application/device/issueticket"
 	"xchat/services/iam/internal/domain/device"
+	"xchat/services/iam/internal/domain/user"
 	"xchat/services/iam/internal/infrastructure/mysql/model"
 
 	"gorm.io/gorm"
@@ -32,21 +33,26 @@ func (dr *DeviceReader) GetMeta(dbCtx context.Context, deviceID device.ID) (*iss
 		return nil, err
 	}
 
-	var deviceRecord model.Device
+	type record struct {
+		UserID      user.ID
+		UserState   user.State
+		State       device.State
+		IdentityPub []byte
+	}
+
+	// The users table also has the columns id and state. Each column must
+	// have its table name, or MySQL rejects the query as ambiguous.
+	var deviceRecord record
 	err = db.
 		Model(&model.Device{}).
 		Select([]string{
-			"user_id",
-			"state",
-			"identity_pub",
+			"users.id AS user_id",
+			"users.state AS user_state",
+			"devices.state",
+			"devices.identity_pub",
 		}).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select([]string{
-				"id",
-				"state",
-			})
-		}).
-		Where("id = ?", deviceID).
+		Joins("INNER JOIN users ON users.id = devices.user_id").
+		Where("devices.id = ?", deviceID).
 		Take(&deviceRecord).
 		Error
 	if err != nil {
@@ -58,7 +64,7 @@ func (dr *DeviceReader) GetMeta(dbCtx context.Context, deviceID device.ID) (*iss
 
 	return &issueticket.DeviceMeta{
 		UserID:      deviceRecord.UserID,
-		UserState:   deviceRecord.User.State,
+		UserState:   deviceRecord.UserState,
 		State:       deviceRecord.State,
 		IdentityPub: deviceRecord.IdentityPub,
 	}, nil
