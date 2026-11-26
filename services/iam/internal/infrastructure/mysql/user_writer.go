@@ -14,8 +14,6 @@ import (
 	"xchat/services/iam/internal/infrastructure/mysql/model"
 
 	"xchat/pkg/database/sql"
-
-	"gorm.io/gorm"
 )
 
 type UserWriter struct{}
@@ -26,7 +24,7 @@ func NewUserWriter() UserWriter {
 }
 
 func (uw *UserWriter) Create(dbCtx context.Context, info user.Info) error {
-	val, err := sql.ExtractDB(dbCtx)
+	db, err := gormDB(dbCtx)
 	if err != nil {
 		return err
 	}
@@ -40,10 +38,7 @@ func (uw *UserWriter) Create(dbCtx context.Context, info user.Info) error {
 		PhoneTail:    info.PhoneTail,
 		State:        info.State,
 	}
-	err = val.(*gorm.DB).
-		WithContext(dbCtx).
-		Create(userModel).
-		Error
+	err = db.Create(userModel).Error
 	if err == nil {
 		return nil
 	}

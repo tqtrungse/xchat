@@ -14,8 +14,6 @@ import (
 	"xchat/services/iam/internal/infrastructure/mysql/model"
 
 	"xchat/pkg/database/sql"
-
-	"gorm.io/gorm"
 )
 
 // deviceUniqueIndexPrefix is the prefix of the name of each unique index of the
@@ -31,7 +29,7 @@ func NewDeviceWriter() DeviceWriter {
 }
 
 func (dw *DeviceWriter) Create(dbCtx context.Context, info device.Info) error {
-	val, err := sql.ExtractDB(dbCtx)
+	db, err := gormDB(dbCtx)
 	if err != nil {
 		return err
 	}
@@ -44,10 +42,7 @@ func (dw *DeviceWriter) Create(dbCtx context.Context, info device.Info) error {
 		IdentityPub: info.IdentityPub,
 		PeerPub:     info.PeerPub,
 	}
-	err = val.(*gorm.DB).
-		WithContext(dbCtx).
-		Create(deviceModel).
-		Error
+	err = db.Create(deviceModel).Error
 	if err == nil {
 		return nil
 	}

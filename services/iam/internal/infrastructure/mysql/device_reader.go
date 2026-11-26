@@ -13,8 +13,6 @@ import (
 	"xchat/services/iam/internal/domain/device"
 	"xchat/services/iam/internal/infrastructure/mysql/model"
 
-	"xchat/pkg/database/sql"
-
 	"gorm.io/gorm"
 )
 
@@ -29,14 +27,13 @@ func NewDeviceReader() DeviceReader {
 // key of the device. It returns nil if the device does not exist or is
 // deleted. The soft delete of model.Device adds the deleted_at condition.
 func (dr *DeviceReader) GetMeta(dbCtx context.Context, deviceID device.ID) (*issueticket.DeviceMeta, error) {
-	val, err := sql.ExtractDB(dbCtx)
+	db, err := gormDB(dbCtx)
 	if err != nil {
 		return nil, err
 	}
 
 	var deviceRecord model.Device
-	err = val.(*gorm.DB).
-		WithContext(dbCtx).
+	err = db.
 		Model(&model.Device{}).
 		Select([]string{
 			"user_id",

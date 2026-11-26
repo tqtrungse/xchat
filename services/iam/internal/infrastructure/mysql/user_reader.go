@@ -13,8 +13,6 @@ import (
 	"xchat/services/iam/internal/domain/user"
 	"xchat/services/iam/internal/infrastructure/mysql/model"
 
-	"xchat/pkg/database/sql"
-
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -27,7 +25,7 @@ func NewUserReader() UserReader {
 }
 
 func (ur *UserReader) Get(dbCtx context.Context, userID user.ID, locking bool) (*user.Info, error) {
-	val, err := sql.ExtractDB(dbCtx)
+	db, err := gormDB(dbCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -45,18 +43,14 @@ func (ur *UserReader) Get(dbCtx context.Context, userID user.ID, locking bool) (
 		UpdatedAt    time.Time
 	}
 
-	db := val.(*gorm.DB)
 	if locking {
-		db = db.
-			WithContext(dbCtx).
-			Clauses(clause.Locking{
-				Strength: clause.LockingStrengthUpdate,
-			})
+		db = db.Clauses(clause.Locking{
+			Strength: clause.LockingStrengthUpdate,
+		})
 	}
 
 	var record Record
 	err = db.
-		WithContext(dbCtx).
 		Model(&model.User{}).
 		Select([]string{
 			"users.id",
