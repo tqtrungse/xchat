@@ -70,6 +70,23 @@ func TestIsValidName(t *testing.T) {
 			want:       false,
 		},
 		{
+			name:       "spaces only",
+			deviceName: "   ",
+			want:       false,
+		},
+		{
+			// U+00A0 is a space, but not a control or a format character.
+			name:       "no-break space only",
+			deviceName: "\u00a0",
+			want:       false,
+		},
+		{
+			// The check rejects a blank name. It does not trim a valid name.
+			name:       "leading and trailing spaces",
+			deviceName: " iPhone 15 ",
+			want:       true,
+		},
+		{
 			name:       "too long",
 			deviceName: strings.Repeat("d", maxNameLength+1),
 			want:       false,

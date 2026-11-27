@@ -48,10 +48,10 @@ func ClaimsFromContext(c *gin.Context) (*jwt.ExtClaims[Claims], bool) {
 	return claims, exists
 }
 
-// AuthenticatedUserID gives the numeric ID of the user in the claims that the
-// authentication middleware attached to the request. ok is false if the claims
-// are missing, or if the ID is empty, is not a number, or is zero. A handler
-// answers that case with RespondInvalidToken.
+// AuthenticatedUserID gives the numeric ID of the user and the "sub" claim of
+// the token. ok is false if the claims are missing, if the subject is empty,
+// or if the ID is empty, is not a number, or is zero. A handler answers that
+// case with RespondInvalidToken.
 //
 // The ID is parsed as a number so that alternate spellings such as "42" and
 // "042" are the same user. Otherwise, they could create separate quotas.

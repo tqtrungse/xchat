@@ -6,14 +6,15 @@
 package device
 
 import (
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
 
 const maxNameLength = 128
 
-// IsValidName reports whether name has 1 to maxNameLength bytes of valid UTF-8
-// and no control or format character.
+// IsValidName reports whether name has 1 to maxNameLength bytes of valid UTF-8,
+// has at least one non-space character, and has no control or format character.
 //
 // The client sends the model and the OS name, for example "iPhone 15 iOS 18".
 // Thus the name can have upper case letters, spaces, and letters of each
@@ -21,7 +22,7 @@ const maxNameLength = 128
 // change how the name looks, so the check rejects each format character. MySQL
 // rejects invalid UTF-8 in a utf8mb4 column, so the check rejects it first.
 func IsValidName(name string) bool {
-	if len(name) == 0 || len(name) > maxNameLength || !utf8.ValidString(name) {
+	if len(name) == 0 || len(name) > maxNameLength || strings.TrimSpace(name) == "" || !utf8.ValidString(name) {
 		return false
 	}
 	for _, character := range name {
